@@ -124,75 +124,6 @@
             border-radius: 20px; font-size: 14px; font-weight: 900; display: none;
             pointer-events: none; z-index: 10000; box-shadow: 0 5px 15px rgba(0,0,0,0.5); text-transform: uppercase;
         }
-
-        /* Responsive Layout Adjustments for Laptop Screens */
-        @media (max-height: 900px), (max-width: 1400px) {
-            #overlay-root {
-                padding: 1rem !important;
-            }
-            .gap-6 {
-                gap: 0.75rem !important;
-            }
-            .w-80 {
-                width: 18rem !important;
-            }
-            #ui-channel-logo {
-                width: 5rem !important;
-            }
-            #panel-events .p-4 {
-                padding: 0.6rem 0.75rem !important;
-                gap: 0.35rem !important;
-            }
-            #panel-medals .p-5 {
-                padding: 0.6rem 0.75rem !important;
-            }
-            #panel-medals .w-10.h-10 {
-                width: 2rem !important;
-                height: 2rem !important;
-                font-size: 0.9rem !important;
-                margin-bottom: 0.25rem !important;
-            }
-            #panel-goals .p-4 {
-                padding: 0.5rem 0.75rem !important;
-                gap: 0.5rem !important;
-            }
-            #panel-lowerthird .px-8 {
-                padding-left: 1.25rem !important;
-                padding-right: 1.25rem !important;
-            }
-            #panel-lowerthird .py-4 {
-                padding-top: 0.5rem !important;
-                padding-bottom: 0.5rem !important;
-            }
-            #ui-lt-logo {
-                width: 3.5rem !important;
-            }
-            .dyn-main-title {
-                font-size: clamp(1.15rem, 2vw, var(--size-main)) !important;
-            }
-            .dyn-sub-title {
-                font-size: clamp(0.75rem, 1.1vw, var(--size-sub)) !important;
-            }
-        }
-
-        @media (max-height: 720px) {
-            #overlay-root {
-                padding: 0.5rem !important;
-            }
-            .gap-6 {
-                gap: 0.5rem !important;
-            }
-            #ui-channel-logo {
-                width: 4rem !important;
-            }
-            #panel-events .p-4, #panel-medals .p-5, #panel-goals .p-4 {
-                padding: 0.4rem 0.5rem !important;
-            }
-            #panel-lowerthird .py-4 {
-                padding-top: 0.35rem !important;
-                padding-bottom: 0.35rem !important;
-            }
-        }
     </style>
 </head>
 <body class="mode-preview text-white antialiased">
@@ -200,10 +131,10 @@
     <div id="drag-hint">DRAGGING ELEMENT...</div>
 
     <!-- OVERLAY ROOT -->
-    <div id="overlay-root" class="relative w-full h-full pointer-events-none z-10 flex flex-col justify-between p-6 box-border">
+    <div id="overlay-root" class="relative w-full h-full pointer-events-none z-10 flex flex-col justify-between p-6">
         
         <!-- TOP SECTION -->
-        <div class="flex justify-between items-start w-full flex-1 min-h-0 pb-3">
+        <div class="flex justify-between items-start w-full h-full pb-6">
             
             <!-- LEFT COLUMN -->
             <div class="flex flex-col gap-6 w-80 items-start">
@@ -255,7 +186,7 @@
             </div>
 
             <!-- RIGHT COLUMN -->
-            <div class="flex flex-col items-end gap-6 w-80 h-full">
+            <div class="flex flex-col items-end gap-6 w-80">
                 <!-- Top Bar -->
                 <div id="panel-topbar" class="glass-panel px-6 py-3 rounded-lg flex items-center gap-4 border-t-4 transition-opacity origin-top-right" style="border-top-color: var(--color-primary); zoom: var(--scale-topbar);">
                     <div class="text-right flex flex-col justify-center">
@@ -306,7 +237,7 @@
         </div>
 
         <!-- BOTTOM LOWER THIRD -->
-        <div class="flex flex-col w-full flex-shrink-0 mt-auto">
+        <div class="flex flex-col w-full mt-auto">
             <!-- Lower Third Main Box -->
             <div id="panel-lowerthird" class="transition-opacity w-full origin-bottom-left" style="zoom: var(--scale-lowerthird);">
                 <div class="w-full flex h-1.5 rounded-t-lg overflow-hidden shadow-lg shadow-black/50">
@@ -636,7 +567,7 @@
             s.visibility.guests = s.visibility.guests ?? true;
             s.scales = s.scales ?? { logoChannel: 1, events: 1, medals: 1, topbar: 1, goals: 1, lowerthird: 1, ticker: 1, guests: 1 };
             s.guestsPos = s.guestsPos ?? { x: 20, y: 50 };
-            if (s.guestsPos && s.guestsPos.x > 100) { s.guestsPos = { x: 20, y: 50 }; }
+            if (s.guestsPos && s.guestsPos.x > 100) { s.guestsPos = { x: 20, y: 50 }; } // Migrate old pixel values to percentage
             s.guests = s.guests ?? JSON.parse(JSON.stringify(defaultState.guests));
             s.fonts.gnameFam = s.fonts.gnameFam || "'Oswald', sans-serif";
             s.fonts.gnameSize = s.fonts.gnameSize || "1.5";
@@ -773,7 +704,7 @@
             message: function(event) {
                 if (event.message && event.message.type === 'SYNC_STATE') {
                     state = sanitizeState(JSON.parse(JSON.stringify(event.message.payload)));
-                    if (isStreamSource) state.isConfigOpen = false;
+                    if (isStreamSource) state.isConfigOpen = false; // Always force UI hidden in Restream/OBS
                     updateDOM();
                     if(!isStreamSource) populateConfigFromState();
                 }
@@ -781,11 +712,13 @@
         });
 
         function syncToStream() {
+            // Beam over cloud
             pubnub.publish({
                 channel: 'asian_games_live_stream_channel',
                 message: { type: 'SYNC_STATE', payload: state }
             });
             
+            // Local save for initial loads
             try { localStorage.setItem('asian_games_sync_state', JSON.stringify(state)); } catch(e){}
 
             const btn = document.getElementById('btn-sync-stream');
@@ -829,7 +762,7 @@
         });
         document.addEventListener('mouseup', () => { isDraggingCfg = false; });
 
-        // --- DRAGGABLE GUEST PANEL LOGIC ---
+        // --- DRAGGABLE GUEST PANEL LOGIC WITH AUTO-SYNC (PERCENTAGE BASED) ---
         let isDraggingGuest = false;
         const guestPanel = document.getElementById('panel-guests');
         
@@ -854,6 +787,7 @@
                 isDraggingGuest = false;
                 document.getElementById('drag-hint').style.display = 'none';
                 
+                // Publish update over PubNub implicitly without showing the "Layout Synced" button animation
                 pubnub.publish({
                     channel: 'asian_games_live_stream_channel',
                     message: { type: 'SYNC_STATE', payload: state }
@@ -878,17 +812,20 @@
             document.getElementById('ui-tourney-logo-wrap').style.display = state.visibility.logoTopRight ? 'flex' : 'none';
             document.getElementById('ui-lt-logo').style.display = state.visibility.logoLowerThird ? 'block' : 'none';
 
+            // Guest Panel Setup (Percent Math)
             guestPanel.style.left = state.guestsPos.x + '%';
             guestPanel.style.top = state.guestsPos.y + '%';
             guestPanel.style.transform = `translate(-50%, -50%) scale(var(--scale-guests))`;
             guestPanel.classList.toggle('mode-edit', state.isConfigOpen && !isStreamSource);
 
+            // Backgrounds & Theme colors
             root.style.setProperty('--color-primary', state.colors.primary);
             root.style.setProperty('--color-secondary', state.colors.secondary);
             let c1 = hexToRgba(state.bg.color1, state.bg.opacity); let c2 = hexToRgba(state.bg.color2, state.bg.opacity);
             root.style.setProperty('--color-panel-bg', state.bg.type === 'gradient' ? `linear-gradient(135deg, ${c1}, ${c2})` : c1);
             if(document.getElementById('lbl-opacity')) document.getElementById('lbl-opacity').textContent = `${Math.round(state.bg.opacity * 100)}%`;
 
+            // Typography Engine
             ['main', 'sub', 'tick', 'topbar', 'events', 'medals', 'goals', 'gname', 'gdesig'].forEach(prefix => {
                 root.style.setProperty(`--font-${prefix}`, state.fonts[`${prefix}Fam`]);
                 root.style.setProperty(`--size-${prefix}`, `${state.fonts[`${prefix}Size`]}rem`);
@@ -896,11 +833,13 @@
                 if(document.getElementById(`f-${prefix}-size-val`)) document.getElementById(`f-${prefix}-size-val`).textContent = state.fonts[`${prefix}Size`];
             });
 
+            // Apply Scales
             Object.keys(state.scales).forEach(k => {
                 root.style.setProperty(`--scale-${k}`, state.scales[k]);
                 if(document.getElementById(`sc-${k}-val`)) document.getElementById(`sc-${k}-val`).textContent = parseFloat(state.scales[k]).toFixed(2);
             });
 
+            // Texts & Images
             document.getElementById('ui-events-header').textContent = state.eventsHeader;
             document.getElementById('ui-tourney-name-1').textContent = state.branding.line1;
             document.getElementById('ui-tourney-name-2').textContent = state.branding.line2;
@@ -912,11 +851,13 @@
             document.getElementById('ui-ticker-label').textContent = state.lowerThird.tickerLabel;
             document.getElementById('ui-ticker-text').textContent = `${state.lowerThird.tickerText} • ${state.lowerThird.tickerText} • ${state.lowerThird.tickerText}`;
 
+            // Goals
             document.getElementById('ui-like-text').textContent = `${state.goals.likeCurr} / ${state.goals.likeTarg}`;
             document.getElementById('ui-like-bar').style.width = `${Math.min(100, (state.goals.likeCurr / state.goals.likeTarg) * 100)}%`;
             document.getElementById('ui-sub-text').textContent = `${state.goals.subCurr} / ${state.goals.subTarg}`;
             document.getElementById('ui-sub-bar').style.width = `${Math.min(100, (state.goals.subCurr / state.goals.subTarg) * 100)}%`;
 
+            // Medals & Events
             ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`ui-medal-${m}`).textContent = state.medals[m]);
             document.getElementById('ui-medal-total').textContent = parseInt(state.medals.gold) + parseInt(state.medals.silver) + parseInt(state.medals.bronze);
             document.getElementById('ui-events-list').innerHTML = state.events.map(ev => `
@@ -925,6 +866,7 @@
                     <span class="font-medium leading-tight">${ev.name}</span>
                 </div>`).join('');
 
+            // Guests Render (Anti-Wrap added)
             document.getElementById('ui-guests-list').innerHTML = state.guests.filter(g => g.show).map(g => `
                 <div class="flex flex-col shadow-2xl rounded-r-lg overflow-hidden border-l-4 pointer-events-none w-max" style="border-left-color: var(--color-primary);">
                     <div class="px-6 py-2" style="background: ${getBgStr(g.nameBgType, g.nameBg1, g.nameBg2)};">
@@ -1120,7 +1062,7 @@
                 btn.className = state.isConfigOpen 
                     ? "fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full shadow-lg font-bold text-sm transition-all duration-300 pointer-events-auto cursor-pointer border border-indigo-400 flex items-center gap-2"
                     : "fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-full shadow-lg font-bold text-sm transition-all duration-300 pointer-events-auto cursor-pointer border border-gray-500 flex items-center gap-2";
-                updateDOM();
+                updateDOM(); // Sync Guest Draggable State
             };
             document.getElementById('btn-toggle-config').addEventListener('click', tglCfg);
             document.getElementById('btn-close-config').addEventListener('click', () => { if(isDetached) document.getElementById('btn-detach-config').click(); tglCfg(); });
@@ -1130,6 +1072,7 @@
         buildStaticDOM();
         refreshDropdown('sel-layout', getLayouts(), activeLayoutName); refreshDropdown('sel-tourney-preset', getTourneyPresets()); refreshDropdown('sel-guest-preset', getGuestPresets());
         buildEventsConfigUI(); buildGuestsConfigUI(); setupListeners(); updateDOM();
+        
     </script>
 </body>
 </html>
