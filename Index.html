@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Live Stream Overlay Widget</title>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load FontAwesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Load Fonts[cite: 4] -->
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Fira+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Lato:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;500;700;800&family=Nunito:wght@400;600;700&family=Open+Sans:wght@400;600;700&family=Oswald:wght@400;500;700&family=PT+Sans:wght@400;700&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Rubik:wght@400;500;700&family=Teko:wght@400;500;600&family=Ubuntu:wght@400;500;700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            /* Default Color Scheme */
+            --color-primary: #FF9933;   
+            --color-secondary: #138808; 
+            --color-panel-bg: rgba(15, 23, 42, 0.85);
+            --color-panel-border: rgba(255, 255, 255, 0.1);
+
+            /* Dynamic Fonts, Sizes, and Colors */
+            --font-main: 'Oswald', sans-serif; --size-main: 2.25rem; --color-main: #ffffff;
+            --font-sub: 'Inter', sans-serif; --size-sub: 1.125rem; --color-sub: #FF9933;
+            --font-tick: 'Inter', sans-serif; --size-tick: 0.875rem; --color-tick: #e5e7eb;
+            --font-topbar: 'Oswald', sans-serif; --size-topbar: 1.25rem; --color-topbar: #ffffff;
+            --font-events: 'Inter', sans-serif; --size-events: 0.875rem; --color-events: #ffffff;
+            --font-medals: 'Oswald', sans-serif; --size-medals: 1.5rem; --color-medals: #ffffff;
+            --font-goals: 'Inter', sans-serif; --size-goals: 0.875rem; --color-goals: #ffffff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease;
+        }
+
+        .mode-preview {
+            background-color: #1a1a1a;
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)),
+                url('https://placehold.co/1920x1080/222222/444444?text=STREAM+PREVIEW+BACKGROUND');
+            background-size: cover;
+            background-position: center;
+        }
+        .mode-obs {
+            background-color: transparent !important;
+            background-image: none !important;
+        }
+
+        /* Ticker Animation */
+        .ticker-wrap { width: 100%; overflow: hidden; white-space: nowrap; box-sizing: border-box; }
+        .ticker { display: inline-block; padding-left: 100%; animation: ticker 25s linear infinite; }
+        @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+
+        /* Glassmorphism Panels */
+        .glass-panel {
+            background: var(--color-panel-bg);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--color-panel-border);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        /* Dynamic Font Classes */
+        .dyn-main-title { font-family: var(--font-main); font-size: var(--size-main); color: var(--color-main); }
+        .dyn-sub-title { font-family: var(--font-sub); font-size: var(--size-sub); color: var(--color-sub); }
+        .dyn-ticker-label { font-family: var(--font-tick); font-size: var(--size-tick); }
+        .dyn-ticker-text { font-family: var(--font-tick); font-size: var(--size-tick); color: var(--color-tick); }
+        
+        .dyn-topbar { font-family: var(--font-topbar); font-size: var(--size-topbar); color: var(--color-topbar); }
+        .dyn-events { font-family: var(--font-events); font-size: var(--size-events); color: var(--color-events); }
+        .dyn-medals { font-family: var(--font-medals); font-size: var(--size-medals); color: var(--color-medals); }
+        .dyn-goals { font-family: var(--font-goals); font-size: var(--size-goals); color: var(--color-goals); }
+        
+        /* Ensure goals children inherit custom typography */
+        .dyn-goals * { font-family: inherit; }
+
+        .font-display { font-family: 'Oswald', sans-serif; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Draggable Editor Styles */
+        #config-panel.detached {
+            position: fixed;
+            height: 80vh !important;
+            border-radius: 0.5rem;
+            transform: none !important;
+            transition: none !important;
+            resize: vertical;
+        }
+        .drag-handle { cursor: move; }
+    </style>
+</head>
+<body class="mode-preview text-white antialiased">
+
+    <!-- OVERLAY ROOT -->
+    <div id="overlay-root" class="relative w-full h-full pointer-events-none z-10 flex flex-col justify-between p-6">
+        
+        <!-- TOP SECTION -->
+        <div class="flex justify-between items-start w-full h-full pb-6">
+            
+            <!-- LEFT COLUMN -->
+            <div class="flex flex-col gap-6 w-80">
+                
+                <!-- Channel Logo (Top Left) -->
+                <div id="panel-channel-logo" class="transition-opacity">
+                    <img id="ui-channel-logo" src="https://placehold.co/200x200/ffffff/000000?text=CHANNEL+LOGO" alt="Channel Logo" class="w-24 h-auto object-contain drop-shadow-xl rounded">
+                </div>
+
+                <!-- Upcoming Events -->
+                <div id="panel-events" class="glass-panel rounded-xl overflow-hidden flex flex-col border-t-4 transition-opacity" style="border-top-color: var(--color-primary);">
+                    <div class="bg-black/40 px-4 py-3 border-b border-white/10 flex items-center gap-2">
+                        <i class="fas fa-calendar-alt" style="color: var(--color-primary);"></i>
+                        <h2 id="ui-events-header" class="font-display font-bold text-lg tracking-wide uppercase">Upcoming Events</h2>
+                    </div>
+                    <div class="p-4 flex flex-col gap-3 dyn-events" id="ui-events-list"></div>
+                </div>
+
+                <!-- India Medal Tally -->
+                <div id="panel-medals" class="glass-panel rounded-xl overflow-hidden flex flex-col border-t-4 transition-opacity" style="border-top-color: var(--color-secondary);">
+                    <div class="bg-black/40 px-4 py-3 border-b border-white/10 flex items-center gap-2">
+                        <img src="https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/20px-Flag_of_India.svg.png" alt="India" class="w-6 h-4 object-cover rounded-sm shadow-sm">
+                        <h2 class="font-display font-bold text-lg tracking-wide uppercase">India Medal Tally</h2>
+                    </div>
+                    <div class="p-5 flex justify-between items-center text-center">
+                        <div class="flex flex-col items-center">
+                            <div class="w-10 h-10 rounded-full bg-yellow-400/20 border-2 border-yellow-400 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(250,204,21,0.3)] mb-2">🥇</div>
+                            <span id="ui-medal-gold" class="dyn-medals font-bold">0</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="w-10 h-10 rounded-full bg-gray-300/20 border-2 border-gray-300 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(209,213,219,0.3)] mb-2">🥈</div>
+                            <span id="ui-medal-silver" class="dyn-medals font-bold">0</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="w-10 h-10 rounded-full bg-amber-700/20 border-2 border-amber-600 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(180,83,9,0.3)] mb-2">🥉</div>
+                            <span id="ui-medal-bronze" class="dyn-medals font-bold">0</span>
+                        </div>
+                    </div>
+                    <div class="bg-black/40 px-4 py-2 text-center text-sm font-bold border-t border-white/10">
+                        TOTAL: <span id="ui-medal-total" class="ml-1" style="color: var(--color-primary);">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <div class="flex flex-col items-end gap-6 w-80">
+                <!-- Top Bar -->
+                <div id="panel-topbar" class="glass-panel px-6 py-3 rounded-lg flex items-center gap-4 border-t-4 transition-opacity" style="border-top-color: var(--color-primary);">
+                    <div class="text-right flex flex-col justify-center">
+                        <div id="ui-tourney-name-1" class="dyn-topbar font-bold tracking-wider leading-tight">ASIAN GAMES 2026</div>
+                        <div id="ui-tourney-name-2" class="text-xs text-gray-300 font-semibold uppercase tracking-widest leading-tight">AICHI-NAGOYA</div>
+                    </div>
+                    <div id="ui-tourney-logo-wrap" class="w-12 h-12 bg-white rounded-full flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-lg transition-opacity">
+                        <img id="ui-tourney-logo" src="https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/60px-Flag_of_India.svg.png" alt="Logo" class="w-full h-full object-contain">
+                    </div>
+                </div>
+
+                <!-- LIVE Indicator -->
+                <div class="glass-panel px-4 py-1 rounded flex items-center gap-2 bg-red-600/90 border-none shadow-red-900/50 shadow-lg self-end">
+                    <div class="w-2 h-2 rounded-full bg-white animate-pulse"></div>
+                    <span class="font-bold text-sm tracking-widest">LIVE</span>
+                </div>
+
+                <!-- Stream Goals Panel -->
+                <div id="panel-goals" class="glass-panel rounded-xl overflow-hidden flex flex-col border-t-4 mt-auto transition-opacity w-full dyn-goals" style="border-top-color: var(--color-secondary);">
+                    <div class="bg-black/40 px-4 py-2 border-b border-white/10 flex justify-between items-center">
+                        <h2 class="font-bold text-sm tracking-wide uppercase text-white">Stream Goals</h2>
+                        <i class="fas fa-bullseye text-gray-400 text-xs"></i>
+                    </div>
+                    <div class="p-4 flex flex-col gap-4 font-semibold">
+                        
+                        <!-- Manual Like Bar -->
+                        <div>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-pink-500"><i class="fas fa-heart"></i> Likes</span> 
+                                <span id="ui-like-text">0 / 100</span>
+                            </div>
+                            <div class="w-full bg-black/50 rounded-full h-2.5 overflow-hidden border border-white/10">
+                                <div id="ui-like-bar" class="bg-gradient-to-r from-pink-600 to-pink-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Manual Sub Bar -->
+                        <div>
+                            <div class="flex justify-between mb-1.5">
+                                <span class="text-red-500"><i class="fab fa-youtube"></i> Subs</span> 
+                                <span id="ui-sub-text">0 / 50</span>
+                            </div>
+                            <div class="w-full bg-black/50 rounded-full h-2.5 overflow-hidden border border-white/10">
+                                <div id="ui-sub-bar" class="bg-gradient-to-r from-red-600 to-red-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM LOWER THIRD -->
+        <div class="flex flex-col w-full mt-auto">
+            <!-- Lower Third Main Box -->
+            <div id="panel-lowerthird" class="transition-opacity">
+                <div class="w-full flex h-1.5 rounded-t-lg overflow-hidden shadow-lg shadow-black/50">
+                    <div class="w-1/3 h-full" style="background-color: var(--color-primary);"></div>
+                    <div class="w-1/3 h-full bg-white"></div>
+                    <div class="w-1/3 h-full" style="background-color: var(--color-secondary);"></div>
+                </div>
+                
+                <div class="px-8 py-4 flex justify-between items-center shadow-2xl glass-panel !rounded-none">
+                    <div class="flex items-center gap-6">
+                        <img id="ui-lt-logo" src="https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/60px-Flag_of_India.svg.png" alt="IND" class="w-20 h-auto rounded border border-white/20 shadow-md object-contain transition-opacity">
+                        <div class="flex flex-col">
+                            <h1 id="ui-main-title" class="dyn-main-title font-bold tracking-wide uppercase drop-shadow-md">ATHLETICS | MEN'S 4x400M RELAY FINAL</h1>
+                            <h3 id="ui-sub-title" class="dyn-sub-title font-semibold tracking-widest uppercase mt-1">Score Update: India (Gold Contention!)</h3>
+                        </div>
+                    </div>
+                    <div class="hidden xl:flex items-center gap-4">
+                        <div class="text-right">
+                            <div class="text-sm text-gray-400 font-bold uppercase">Streaming on</div>
+                            <div class="text-xl font-display font-bold text-white flex items-center gap-2 justify-end">
+                                <i class="fas fa-satellite-dish text-blue-400"></i> LIVE FEED
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scrolling Ticker -->
+            <div id="panel-ticker" class="bg-black/90 text-white overflow-hidden py-1.5 flex items-center rounded-b-lg border-b border-white/10 shadow-xl transition-opacity">
+                <div id="ui-ticker-label" class="dyn-ticker-label text-white px-4 py-1 font-bold uppercase tracking-wider z-10 shadow-[5px_0_10px_rgba(0,0,0,0.5)] flex-shrink-0" style="background-color: var(--color-primary);">
+                    TEAM INDIA UPDATES
+                </div>
+                <div class="ticker-wrap flex-grow font-medium tracking-wide">
+                    <div id="ui-ticker-text" class="ticker dyn-ticker-text"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS TOGGLE BUTTON -->
+    <button id="btn-toggle-config" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full shadow-lg font-bold text-sm transition-all duration-300 pointer-events-auto cursor-pointer border border-indigo-400 flex items-center gap-2">
+        <i class="fas fa-eye-slash"></i> <span>Hide Controls (OBS Mode)</span>
+    </button>
+
+    <!-- SETTINGS PANEL -->
+    <div id="config-panel" class="fixed top-0 right-0 h-full w-[400px] bg-slate-900 border-l border-slate-700 shadow-2xl transition-transform duration-300 z-40 pointer-events-auto flex flex-col text-sm overflow-hidden transform translate-x-0">
+        
+        <!-- Draggable Header -->
+        <div id="config-header" class="p-4 border-b border-slate-700 bg-slate-800 flex justify-between items-center shadow-md z-10 select-none">
+            <h2 class="font-bold text-lg text-white flex items-center gap-2 pointer-events-none"><i class="fas fa-sliders-h text-indigo-400"></i> Widget Editor</h2>
+            <div class="flex gap-3">
+                <button id="btn-detach-config" class="text-gray-400 hover:text-white transition-colors" title="Detach Editor"><i class="fas fa-external-link-alt"></i></button>
+                <button id="btn-close-config" class="text-gray-400 hover:text-white transition-colors"><i class="fas fa-times text-xl"></i></button>
+            </div>
+        </div>
+
+        <!-- Sync Button -->
+        <div class="px-4 py-3 bg-indigo-900/50 border-b border-indigo-500/30">
+            <button id="btn-sync-stream" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded shadow transition-colors flex justify-center items-center gap-2">
+                <i class="fas fa-broadcast-tower"></i> Sync to Stream (OBS)
+            </button>
+            <p class="text-[10px] text-indigo-300 mt-1 text-center leading-tight">Click to instantly push current layout to your OBS browser source.</p>
+        </div>
+
+        <div class="p-5 overflow-y-auto flex-grow flex flex-col gap-6 pb-20">
+            
+            <!-- Layout Manager (Save/Load) -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-emerald-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-save"></i> Layout Manager</h3>
+                
+                <div class="flex gap-2 mb-2">
+                    <select id="sel-layout" class="flex-grow bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-xs"></select>
+                    <button id="btn-load-layout" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition-colors">Load</button>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
+                    <button id="btn-save-layout" class="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded text-xs transition-colors flex justify-center items-center gap-1"><i class="fas fa-save"></i> Save</button>
+                    <button id="btn-saveas-layout" class="bg-blue-600 hover:bg-blue-500 text-white py-1.5 rounded text-xs transition-colors flex justify-center items-center gap-1"><i class="fas fa-plus"></i> Save As</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button id="btn-export-json" class="bg-slate-700 hover:bg-slate-600 text-white py-1.5 rounded text-xs transition-colors flex justify-center items-center gap-1"><i class="fas fa-file-export"></i> Export JSON</button>
+                    <button id="btn-import-json" class="bg-slate-700 hover:bg-slate-600 text-white py-1.5 rounded text-xs transition-colors flex justify-center items-center gap-1"><i class="fas fa-file-import"></i> Import JSON</button>
+                    <input type="file" id="in-file-import" accept=".json" class="hidden">
+                </div>
+            </div>
+
+            <!-- Visibility Controls -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-eye"></i> Box Visibility</h3>
+                <div class="grid grid-cols-2 gap-2 text-[11px] text-gray-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-events" checked class="accent-indigo-500"> Upcoming Events</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-medals" checked class="accent-indigo-500"> Medal Tally</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-topbar" checked class="accent-indigo-500"> Top Bar Panel</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-goals" checked class="accent-indigo-500"> Stream Goals</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-lowerthird" checked class="accent-indigo-500"> Lower Third</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-ticker" checked class="accent-indigo-500"> Bottom Ticker</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-logoChannel" checked class="accent-emerald-500"> Channel Logo (Top L)</label>
+                </div>
+                <div class="border-t border-slate-700 pt-2 mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-logoTopRight" checked class="accent-emerald-500"> Show Top R Logo</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" id="chk-logoLowerThird" checked class="accent-emerald-500"> Show Lwr 3rd Logo</label>
+                </div>
+            </div>
+
+            <!-- Global Background & Theme Settings -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-palette"></i> Panel Background & Theme</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-gray-400 mb-1 text-xs">Theme Primary</label>
+                        <input type="color" id="in-color-primary" value="#FF9933" class="w-full h-8 bg-transparent border-0 cursor-pointer rounded">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 text-xs">Theme Secondary</label>
+                        <input type="color" id="in-color-secondary" value="#138808" class="w-full h-8 bg-transparent border-0 cursor-pointer rounded">
+                    </div>
+                </div>
+                <div class="mt-2 border-t border-slate-700 pt-3">
+                    <label class="block text-gray-400 mb-1 text-xs">Background Style</label>
+                    <select id="in-bg-type" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white mb-2 text-xs">
+                        <option value="solid">Solid Color</option>
+                        <option value="gradient">Gradient (2 Colors)</option>
+                    </select>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-400 mb-1 text-xs">Color 1</label>
+                            <input type="color" id="in-bg-color1" value="#0f172a" class="w-full h-8 bg-transparent border-0 cursor-pointer rounded">
+                        </div>
+                        <div id="wrap-bg-color2" class="hidden">
+                            <label class="block text-gray-400 mb-1 text-xs">Color 2</label>
+                            <input type="color" id="in-bg-color2" value="#1e293b" class="w-full h-8 bg-transparent border-0 cursor-pointer rounded">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="block text-gray-400 mb-1 text-xs">Panel Opacity: <span id="lbl-opacity">85%</span></label>
+                        <input type="range" id="in-bg-opacity" min="0" max="1" step="0.05" value="0.85" class="w-full accent-indigo-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Expanded Font Styles Customization[cite: 4, 5] -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-font"></i> Global Typography</h3>
+                
+                <div class="grid gap-3">
+                    <script>
+                        const fontList = [
+                            "Montserrat", "Teko", "Roboto", "Bebas Neue", "Oswald", "Anton",
+                            "Poppins", "Lato", "Open Sans", "Raleway", "Ubuntu", "PT Sans",
+                            "Merriweather", "Playfair Display", "Rubik", "Work Sans", "Nunito",
+                            "Fira Sans", "Inter"
+                        ];
+
+                        const fontFields = [
+                            { id: 'main', label: 'Main Title', defFam: "'Oswald', sans-serif", defSize: 2.25, defColor: '#ffffff' },
+                            { id: 'sub', label: 'Sub Title', defFam: "'Inter', sans-serif", defSize: 1.125, defColor: '#FF9933' },
+                            { id: 'tick', label: 'Ticker Text', defFam: "'Inter', sans-serif", defSize: 0.875, defColor: '#e5e7eb' },
+                            { id: 'topbar', label: 'Top Bar Panel', defFam: "'Oswald', sans-serif", defSize: 1.25, defColor: '#ffffff' },
+                            { id: 'events', label: 'Events Text', defFam: "'Inter', sans-serif", defSize: 0.875, defColor: '#ffffff' },
+                            { id: 'medals', label: 'Medal Numbers', defFam: "'Oswald', sans-serif", defSize: 1.5, defColor: '#ffffff' },
+                            { id: 'goals', label: 'Goals Panel', defFam: "'Inter', sans-serif", defSize: 0.875, defColor: '#ffffff' }
+                        ];
+
+                        document.write(fontFields.map(f => {
+                            const options = fontList.map(font => {
+                                const fontVal = `'${font}', sans-serif`;
+                                return `<option value="${fontVal}" ${f.defFam.includes(font) ? 'selected' : ''}>${font}</option>`;
+                            }).join('');
+
+                            return `
+                                <div class="border border-slate-700 p-2 rounded flex flex-col gap-2">
+                                    <div class="flex justify-between items-center">
+                                        <label class="text-gray-300 font-bold text-[10px] uppercase">${f.label}</label>
+                                        <input type="color" id="f-${f.id}-color" value="${f.defColor}" class="w-5 h-5 rounded border-0 bg-transparent cursor-pointer" title="Change Color">
+                                    </div>
+                                    <select id="f-${f.id}-fam" class="w-full bg-slate-900 border border-slate-600 rounded px-1 py-1 text-white text-xs">
+                                        ${options}
+                                    </select>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-text-height text-gray-500 text-xs"></i>
+                                        <input type="range" id="f-${f.id}-size" class="flex-grow accent-indigo-500" min="0.5" max="5.0" step="0.05" value="${f.defSize}">
+                                        <span id="f-${f.id}-size-val" class="text-xs text-gray-400 w-8 text-right font-mono">${f.defSize}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join(''));
+                    </script>
+                </div>
+            </div>
+
+            <!-- Branding Logos Uploads -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-image"></i> Branding Logos</h3>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Top Left Channel Logo</label>
+                    <input type="file" id="in-channel-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Top Right Tournament Logo</label>
+                    <input type="file" id="in-tourney-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Lower Third Main Logo</label>
+                    <input type="file" id="in-lt-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Lower Third Texts & Content -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-tv"></i> Text Inputs</h3>
+                
+                <!-- Tournament Headers -->
+                <div class="grid grid-cols-2 gap-2 mb-2 pb-2 border-b border-slate-700">
+                    <div class="col-span-2 flex gap-2 mb-1">
+                        <select id="sel-tourney-preset" class="flex-grow bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-[10px]"></select>
+                        <button id="btn-load-tourney" class="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[10px]">Load Preset</button>
+                    </div>
+                    <div class="col-span-2 mb-2">
+                        <button id="btn-save-tourney" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-1 rounded text-[10px] transition-colors"><i class="fas fa-save"></i> Save Tourney Preset (Name + Logo)</button>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 text-[10px]">Tourney Line 1</label>
+                        <input type="text" id="in-tourney-1" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs" value="ASIAN GAMES 2026">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1 text-[10px]">Tourney Line 2</label>
+                        <input type="text" id="in-tourney-2" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs" value="AICHI-NAGOYA">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Main Title</label>
+                    <input type="text" id="in-main-title" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 font-bold" value="ATHLETICS | MEN'S 4x400M RELAY FINAL">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Sub Title</label>
+                    <input type="text" id="in-sub-title" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500" value="Score Update: India (Gold Contention!)">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Ticker Label</label>
+                    <input type="text" id="in-ticker-label" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500" value="TEAM INDIA UPDATES">
+                </div>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-xs">Scrolling Ticker Text</label>
+                    <textarea id="in-ticker" rows="2" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-white focus:outline-none focus:border-indigo-500 text-xs">Welcome to the Live Stream! • Use #GoTeamIndia #AsianGames2026 in chat</textarea>
+                </div>
+            </div>
+
+            <!-- Stream Goals Settings -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-bullseye"></i> Goal Adjustments</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-pink-400 mb-1 text-xs">Likes (Current)</label>
+                        <input type="number" id="in-like-curr" min="0" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center" value="45">
+                    </div>
+                    <div>
+                        <label class="block text-pink-400 mb-1 text-xs">Likes (Target)</label>
+                        <input type="number" id="in-like-targ" min="1" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center" value="100">
+                    </div>
+                    <div>
+                        <label class="block text-red-500 mb-1 text-xs">Subs (Current)</label>
+                        <input type="number" id="in-sub-curr" min="0" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center" value="15">
+                    </div>
+                    <div>
+                        <label class="block text-red-500 mb-1 text-xs">Subs (Target)</label>
+                        <input type="number" id="in-sub-targ" min="1" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center" value="50">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event & Medal Data -->
+            <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-list"></i> Events & Medals</h3>
+                <div>
+                    <label class="block text-gray-400 mb-1 text-[10px]">Events Header Text</label>
+                    <input type="text" id="in-events-header" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs mb-2" value="Upcoming Events">
+                </div>
+                <div id="cfg-events-container" class="space-y-2 mb-2"></div>
+                <button id="btn-add-event" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-1 rounded text-xs transition-colors mb-2"><i class="fas fa-plus"></i> Add Event Row</button>
+                
+                <div class="grid grid-cols-3 gap-3 border-t border-slate-600 pt-3">
+                    <div>
+                        <label class="block text-yellow-400 mb-1 text-[10px] uppercase text-center">Gold</label>
+                        <input type="number" id="in-gold" min="0" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center font-bold" value="4">
+                    </div>
+                    <div>
+                        <label class="block text-gray-300 mb-1 text-[10px] uppercase text-center">Silver</label>
+                        <input type="number" id="in-silver" min="0" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center font-bold" value="12">
+                    </div>
+                    <div>
+                        <label class="block text-amber-600 mb-1 text-[10px] uppercase text-center">Bronze</label>
+                        <input type="number" id="in-bronze" min="0" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-white text-center font-bold" value="8">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- DEFAULT STATE & INITIALIZATION ---
+        const defaultState = {
+            visibility: { events: true, medals: true, topbar: true, goals: true, lowerthird: true, ticker: true, logoChannel: true, logoTopRight: true, logoLowerThird: true },
+            colors: { primary: '#FF9933', secondary: '#138808' },
+            bg: { type: 'solid', color1: '#0f172a', color2: '#1e293b', opacity: 0.85 },
+            fonts: {
+                mainFam: "'Oswald', sans-serif", mainSize: "2.25", mainColor: "#ffffff",
+                subFam: "'Inter', sans-serif", subSize: "1.125", subColor: "#FF9933",
+                tickFam: "'Inter', sans-serif", tickSize: "0.875", tickColor: "#e5e7eb",
+                topbarFam: "'Oswald', sans-serif", topbarSize: "1.25", topbarColor: "#ffffff",
+                eventsFam: "'Inter', sans-serif", eventsSize: "0.875", eventsColor: "#ffffff",
+                medalsFam: "'Oswald', sans-serif", medalsSize: "1.5", medalsColor: "#ffffff",
+                goalsFam: "'Inter', sans-serif", goalsSize: "0.875", goalsColor: "#ffffff"
+            },
+            branding: { line1: 'ASIAN GAMES 2026', line2: 'AICHI-NAGOYA', logoUrl: 'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/60px-Flag_of_India.svg.png', channelLogoUrl: 'https://placehold.co/200x200/ffffff/000000?text=CHANNEL+LOGO' },
+            lowerThird: {
+                logoUrl: 'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/60px-Flag_of_India.svg.png',
+                mainTitle: "ATHLETICS | MEN'S 4x400M RELAY FINAL", subTitle: "Score Update: India (Gold Contention!)",
+                tickerLabel: "TEAM INDIA UPDATES", tickerText: "Welcome to the Live Stream! • Use #GoTeamIndia #AsianGames2026 in chat"
+            },
+            goals: { likeCurr: 45, likeTarg: 100, subCurr: 15, subTarg: 50 },
+            medals: { gold: 4, silver: 12, bronze: 8 },
+            eventsHeader: "Upcoming Events",
+            events: [{ time: "18:30", name: "Hockey (Ind vs Pak)" }, { time: "19:15", name: "Boxing Men's 75kg Final" }, { time: "20:00", name: "Badminton QF" }],
+            isConfigOpen: true
+        };
+
+        let state = JSON.parse(JSON.stringify(defaultState));
+        let activeLayoutName = 'Default';
+
+        // --- DRAGGABLE PANEL LOGIC ---
+        let isDetached = false;
+        let isDragging = false;
+        let dragStartX, dragStartY, panelStartX, panelStartY;
+        const panel = document.getElementById('config-panel');
+        const header = document.getElementById('config-header');
+
+        document.getElementById('btn-detach-config').addEventListener('click', () => {
+            isDetached = !isDetached;
+            if(isDetached) {
+                panel.classList.remove('h-full', 'right-0', 'top-0', 'fixed', 'translate-x-0', 'translate-x-full');
+                panel.classList.add('detached');
+                panel.style.top = '100px';
+                panel.style.left = '100px';
+                header.classList.add('drag-handle');
+            } else {
+                panel.classList.add('h-full', 'right-0', 'top-0', 'fixed');
+                panel.classList.remove('detached');
+                panel.style.top = '';
+                panel.style.left = '';
+                header.classList.remove('drag-handle');
+                panel.style.transform = '';
+            }
+        });
+
+        header.addEventListener('mousedown', e => {
+            if(!isDetached || e.target.closest('button')) return;
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            const rect = panel.getBoundingClientRect();
+            panelStartX = rect.left;
+            panelStartY = rect.top;
+        });
+
+        document.addEventListener('mousemove', e => {
+            if(!isDragging) return;
+            e.preventDefault();
+            const dx = e.clientX - dragStartX;
+            const dy = e.clientY - dragStartY;
+            panel.style.left = `${panelStartX + dx}px`;
+            panel.style.top = `${panelStartY + dy}px`;
+        });
+
+        document.addEventListener('mouseup', () => { isDragging = false; });
+
+        // --- BROADCAST CHANNEL (SYNC TO STREAM) ---
+        const bc = new BroadcastChannel('obs_overlay_sync');
+        bc.onmessage = (e) => {
+            if (e.data.type === 'SYNC_STATE') {
+                state = JSON.parse(JSON.stringify(e.data.payload));
+                updateDOM();
+                populateConfigFromState();
+            }
+        };
+
+        function syncToStream() {
+            bc.postMessage({ type: 'SYNC_STATE', payload: state });
+            
+            const btn = document.getElementById('btn-sync-stream');
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Layout Synced!';
+            btn.classList.add('bg-emerald-600');
+            setTimeout(() => {
+                btn.innerHTML = origHtml;
+                btn.classList.remove('bg-emerald-600');
+            }, 2000);
+        }
+
+        // --- CORE UI UPDATE ---
+        const hexToRgba = (hex, alpha) => {
+            const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        function updateDOM() {
+            const root = document.documentElement;
+            
+            // Visibility Panels
+            const p = (id, show, disp='flex') => document.getElementById(id).style.display = show ? disp : 'none';
+            p('panel-events', state.visibility.events); p('panel-medals', state.visibility.medals);
+            p('panel-topbar', state.visibility.topbar); p('panel-goals', state.visibility.goals);
+            p('panel-lowerthird', state.visibility.lowerthird, 'block'); p('panel-ticker', state.visibility.ticker);
+            p('panel-channel-logo', state.visibility.logoChannel, 'block');
+
+            // Visibility Logos
+            document.getElementById('ui-tourney-logo-wrap').style.display = state.visibility.logoTopRight ? 'flex' : 'none';
+            document.getElementById('ui-lt-logo').style.display = state.visibility.logoLowerThird ? 'block' : 'none';
+
+            // Backgrounds & Theme colors
+            root.style.setProperty('--color-primary', state.colors.primary);
+            root.style.setProperty('--color-secondary', state.colors.secondary);
+            
+            let c1 = hexToRgba(state.bg.color1, state.bg.opacity);
+            let c2 = hexToRgba(state.bg.color2, state.bg.opacity);
+            root.style.setProperty('--color-panel-bg', state.bg.type === 'gradient' ? `linear-gradient(135deg, ${c1}, ${c2})` : c1);
+            if(document.getElementById('lbl-opacity')) document.getElementById('lbl-opacity').textContent = `${Math.round(state.bg.opacity * 100)}%`;
+
+            // Typography Engine[cite: 5]
+            ['main', 'sub', 'tick', 'topbar', 'events', 'medals', 'goals'].forEach(prefix => {
+                root.style.setProperty(`--font-${prefix}`, state.fonts[`${prefix}Fam`]);
+                root.style.setProperty(`--size-${prefix}`, `${state.fonts[`${prefix}Size`]}rem`);
+                root.style.setProperty(`--color-${prefix}`, state.fonts[`${prefix}Color`]);
+                
+                if(document.getElementById(`f-${prefix}-size-val`)) {
+                    document.getElementById(`f-${prefix}-size-val`).textContent = state.fonts[`${prefix}Size`];
+                }
+            });
+
+            // Texts & Images
+            document.getElementById('ui-events-header').textContent = state.eventsHeader;
+            document.getElementById('ui-tourney-name-1').textContent = state.branding.line1;
+            document.getElementById('ui-tourney-name-2').textContent = state.branding.line2;
+            document.getElementById('ui-tourney-logo').src = state.branding.logoUrl;
+            document.getElementById('ui-channel-logo').src = state.branding.channelLogoUrl;
+            
+            document.getElementById('ui-lt-logo').src = state.lowerThird.logoUrl;
+            document.getElementById('ui-main-title').textContent = state.lowerThird.mainTitle;
+            document.getElementById('ui-sub-title').textContent = state.lowerThird.subTitle;
+            document.getElementById('ui-ticker-label').textContent = state.lowerThird.tickerLabel;
+            document.getElementById('ui-ticker-text').textContent = `${state.lowerThird.tickerText} • ${state.lowerThird.tickerText} • ${state.lowerThird.tickerText}`;
+
+            // Goals
+            const lPct = Math.min(100, (state.goals.likeCurr / state.goals.likeTarg) * 100);
+            document.getElementById('ui-like-text').textContent = `${state.goals.likeCurr} / ${state.goals.likeTarg}`;
+            document.getElementById('ui-like-bar').style.width = `${lPct}%`;
+
+            const sPct = Math.min(100, (state.goals.subCurr / state.goals.subTarg) * 100);
+            document.getElementById('ui-sub-text').textContent = `${state.goals.subCurr} / ${state.goals.subTarg}`;
+            document.getElementById('ui-sub-bar').style.width = `${sPct}%`;
+
+            // Medals & Events
+            ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`ui-medal-${m}`).textContent = state.medals[m]);
+            document.getElementById('ui-medal-total').textContent = parseInt(state.medals.gold) + parseInt(state.medals.silver) + parseInt(state.medals.bronze);
+
+            document.getElementById('ui-events-list').innerHTML = state.events.map(ev => `
+                <div class="flex items-start gap-3 border-l-2 pl-3 py-1" style="border-color: var(--color-primary);">
+                    <span class="font-bold w-12 flex-shrink-0" style="color: var(--color-primary);">${ev.time}</span>
+                    <span class="font-medium leading-tight">${ev.name}</span>
+                </div>`).join('');
+        }
+
+        // --- LAYOUT & TOURNAMENT MANAGEMENT ---
+        function getLayouts() {
+            let layouts = JSON.parse(localStorage.getItem('stream_layouts') || '{}');
+            if(!layouts['Default']) layouts['Default'] = JSON.parse(JSON.stringify(defaultState));
+            return layouts;
+        }
+
+        function getTourneyPresets() {
+            return JSON.parse(localStorage.getItem('stream_tourney_presets') || '{}');
+        }
+
+        function refreshLayoutDropdown() {
+            const layouts = getLayouts();
+            const sel = document.getElementById('sel-layout');
+            sel.innerHTML = Object.keys(layouts).map(k => `<option value="${k}" ${k===activeLayoutName?'selected':''}>${k}</option>`).join('');
+        }
+
+        function refreshTourneyDropdown() {
+            const presets = getTourneyPresets();
+            const sel = document.getElementById('sel-tourney-preset');
+            sel.innerHTML = Object.keys(presets).map(k => `<option value="${k}">${k}</option>`).join('');
+        }
+
+        function populateConfigFromState() {
+            // Visibility Checkboxes
+            Object.keys(state.visibility).forEach(k => { if(document.getElementById(`chk-${k}`)) document.getElementById(`chk-${k}`).checked = state.visibility[k]; });
+            
+            // BG & Colors
+            document.getElementById('in-color-primary').value = state.colors.primary;
+            document.getElementById('in-color-secondary').value = state.colors.secondary;
+            document.getElementById('in-bg-type').value = state.bg.type;
+            document.getElementById('wrap-bg-color2').classList.toggle('hidden', state.bg.type !== 'gradient');
+            document.getElementById('in-bg-color1').value = state.bg.color1;
+            document.getElementById('in-bg-color2').value = state.bg.color2;
+            document.getElementById('in-bg-opacity').value = state.bg.opacity;
+
+            // Typography Inputs
+            ['main', 'sub', 'tick', 'topbar', 'events', 'medals', 'goals'].forEach(prefix => {
+                if(document.getElementById(`f-${prefix}-fam`)) document.getElementById(`f-${prefix}-fam`).value = state.fonts[`${prefix}Fam`];
+                if(document.getElementById(`f-${prefix}-size`)) document.getElementById(`f-${prefix}-size`).value = state.fonts[`${prefix}Size`];
+                if(document.getElementById(`f-${prefix}-color`)) document.getElementById(`f-${prefix}-color`).value = state.fonts[`${prefix}Color`];
+            });
+
+            // Texts
+            document.getElementById('in-tourney-1').value = state.branding.line1;
+            document.getElementById('in-tourney-2').value = state.branding.line2;
+            document.getElementById('in-main-title').value = state.lowerThird.mainTitle;
+            document.getElementById('in-sub-title').value = state.lowerThird.subTitle;
+            document.getElementById('in-ticker-label').value = state.lowerThird.tickerLabel;
+            document.getElementById('in-ticker').value = state.lowerThird.tickerText;
+            document.getElementById('in-events-header').value = state.eventsHeader;
+
+            // Goals & Medals
+            ['likeCurr', 'likeTarg', 'subCurr', 'subTarg'].forEach(k => {
+                const id = k.replace(/([A-Z])/g, "-$1").toLowerCase();
+                document.getElementById(`in-${id}`).value = state.goals[k];
+            });
+            ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`in-${m}`).value = state.medals[m]);
+
+            // Events
+            buildEventsConfigUI();
+        }
+
+        function buildEventsConfigUI() {
+            const evContainer = document.getElementById('cfg-events-container');
+            evContainer.innerHTML = state.events.map((ev, i) => `
+                <div class="flex gap-1 items-center mb-1">
+                    <input type="text" class="w-1/4 bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs ev-time" data-idx="${i}" value="${ev.time}">
+                    <input type="text" class="flex-grow bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-xs ev-name" data-idx="${i}" value="${ev.name}">
+                    <button class="btn-del-event text-red-500 hover:text-red-400 px-2" data-idx="${i}"><i class="fas fa-trash"></i></button>
+                </div>`).join('');
+            
+            evContainer.querySelectorAll('input').forEach(el => el.addEventListener('input', e => {
+                const isTime = e.target.classList.contains('ev-time');
+                state.events[e.target.dataset.idx][isTime ? 'time' : 'name'] = e.target.value;
+                updateDOM();
+            }));
+
+            evContainer.querySelectorAll('.btn-del-event').forEach(btn => btn.addEventListener('click', e => {
+                state.events.splice(e.currentTarget.dataset.idx, 1);
+                buildEventsConfigUI();
+                updateDOM();
+            }));
+        }
+
+        // --- LISTENERS ---
+        function setupListeners() {
+            // Layout Management
+            document.getElementById('btn-load-layout').addEventListener('click', () => {
+                activeLayoutName = document.getElementById('sel-layout').value;
+                state = JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]));
+                updateDOM(); populateConfigFromState();
+            });
+
+            document.getElementById('btn-save-layout').addEventListener('click', () => {
+                if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) {
+                    let layouts = getLayouts();
+                    layouts[activeLayoutName] = state;
+                    localStorage.setItem('stream_layouts', JSON.stringify(layouts));
+                    alert('Layout saved successfully.');
+                }
+            });
+
+            document.getElementById('btn-saveas-layout').addEventListener('click', () => {
+                let name = prompt("Enter new layout name:");
+                if(name && name.trim() !== '') {
+                    activeLayoutName = name.trim();
+                    let layouts = getLayouts();
+                    layouts[activeLayoutName] = state;
+                    localStorage.setItem('stream_layouts', JSON.stringify(layouts));
+                    refreshLayoutDropdown();
+                }
+            });
+
+            // Tournament Presets
+            document.getElementById('btn-save-tourney').addEventListener('click', () => {
+                let name = prompt("Enter a name for this tournament preset:");
+                if(name && name.trim() !== '') {
+                    let presets = getTourneyPresets();
+                    presets[name.trim()] = { line1: state.branding.line1, line2: state.branding.line2, logoUrl: state.branding.logoUrl };
+                    localStorage.setItem('stream_tourney_presets', JSON.stringify(presets));
+                    refreshTourneyDropdown();
+                    alert("Tournament saved.");
+                }
+            });
+
+            document.getElementById('btn-load-tourney').addEventListener('click', () => {
+                const sel = document.getElementById('sel-tourney-preset').value;
+                const presets = getTourneyPresets();
+                if(presets[sel]) {
+                    state.branding.line1 = presets[sel].line1;
+                    state.branding.line2 = presets[sel].line2;
+                    state.branding.logoUrl = presets[sel].logoUrl;
+                    updateDOM(); populateConfigFromState();
+                }
+            });
+
+            document.getElementById('btn-export-json').addEventListener('click', () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+                const a = document.createElement('a');
+                a.href = dataStr;
+                a.download = `overlay_layout_${activeLayoutName.replace(/\s+/g, '_')}.json`;
+                a.click();
+            });
+
+            document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('in-file-import').click());
+            document.getElementById('in-file-import').addEventListener('change', (e) => {
+                if(e.target.files.length > 0) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const imported = JSON.parse(event.target.result);
+                            state = imported;
+                            updateDOM(); populateConfigFromState();
+                            alert("Layout imported successfully. Remember to Save if you want to keep it!");
+                        } catch(err) { alert("Error reading JSON file."); }
+                    };
+                    reader.readAsText(e.target.files[0]);
+                }
+            });
+
+            document.getElementById('btn-sync-stream').addEventListener('click', syncToStream);
+
+            // Visibility Checkboxes
+            const toggles = ['events', 'medals', 'topbar', 'goals', 'lowerthird', 'ticker', 'logoChannel', 'logoTopRight', 'logoLowerThird'];
+            toggles.forEach(id => {
+                if(document.getElementById(`chk-${id}`)) {
+                    document.getElementById(`chk-${id}`).addEventListener('change', e => { state.visibility[id] = e.target.checked; updateDOM(); });
+                }
+            });
+
+            // Dynamic Events Button
+            document.getElementById('btn-add-event').addEventListener('click', () => {
+                state.events.push({ time: "00:00", name: "New Event" });
+                buildEventsConfigUI();
+                updateDOM();
+            });
+
+            // BG & Colors
+            document.getElementById('in-color-primary').addEventListener('input', e => { state.colors.primary = e.target.value; updateDOM(); });
+            document.getElementById('in-color-secondary').addEventListener('input', e => { state.colors.secondary = e.target.value; updateDOM(); });
+            
+            document.getElementById('in-bg-type').addEventListener('change', e => {
+                state.bg.type = e.target.value;
+                document.getElementById('wrap-bg-color2').classList.toggle('hidden', state.bg.type !== 'gradient');
+                updateDOM();
+            });
+            document.getElementById('in-bg-color1').addEventListener('input', e => { state.bg.color1 = e.target.value; updateDOM(); });
+            document.getElementById('in-bg-color2').addEventListener('input', e => { state.bg.color2 = e.target.value; updateDOM(); });
+            document.getElementById('in-bg-opacity').addEventListener('input', e => { state.bg.opacity = e.target.value; updateDOM(); });
+
+            // Typography Inputs
+            ['main', 'sub', 'tick', 'topbar', 'events', 'medals', 'goals'].forEach(prefix => {
+                if(document.getElementById(`f-${prefix}-fam`)) {
+                    document.getElementById(`f-${prefix}-fam`).addEventListener('change', e => { state.fonts[`${prefix}Fam`] = e.target.value; updateDOM(); });
+                    document.getElementById(`f-${prefix}-size`).addEventListener('input', e => { state.fonts[`${prefix}Size`] = e.target.value; updateDOM(); });
+                    document.getElementById(`f-${prefix}-color`).addEventListener('input', e => { state.fonts[`${prefix}Color`] = e.target.value; updateDOM(); });
+                }
+            });
+
+            // Texts & Images
+            const setVal = (id, obj, key) => {
+                if(document.getElementById(id)) document.getElementById(id).addEventListener('input', e => { state[obj][key] = e.target.value; updateDOM(); });
+            };
+            setVal('in-tourney-1', 'branding', 'line1'); setVal('in-tourney-2', 'branding', 'line2');
+            setVal('in-main-title', 'lowerThird', 'mainTitle'); setVal('in-sub-title', 'lowerThird', 'subTitle');
+            setVal('in-ticker-label', 'lowerThird', 'tickerLabel'); setVal('in-ticker', 'lowerThird', 'tickerText');
+            document.getElementById('in-events-header').addEventListener('input', e => { state.eventsHeader = e.target.value; updateDOM(); });
+
+            // File Uploaders (Logos)
+            const handleImageUpload = (inputId, stateObj, stateKey) => {
+                if(document.getElementById(inputId)) {
+                    document.getElementById(inputId).addEventListener('change', e => {
+                        if (e.target.files[0]) {
+                            const reader = new FileReader();
+                            reader.onload = ev => { state[stateObj][stateKey] = ev.target.result; updateDOM(); };
+                            reader.readAsDataURL(e.target.files[0]);
+                        }
+                    });
+                }
+            };
+            handleImageUpload('in-channel-logo', 'branding', 'channelLogoUrl');
+            handleImageUpload('in-tourney-logo', 'branding', 'logoUrl');
+            handleImageUpload('in-lt-logo', 'lowerThird', 'logoUrl');
+
+            // Goals & Medals
+            ['likeCurr', 'likeTarg', 'subCurr', 'subTarg'].forEach(k => {
+                const id = k.replace(/([A-Z])/g, "-$1").toLowerCase();
+                if(document.getElementById(`in-${id}`)) document.getElementById(`in-${id}`).addEventListener('input', e => { state.goals[k] = parseInt(e.target.value)||0; updateDOM(); });
+            });
+            ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`in-${m}`).addEventListener('input', e => { state.medals[m] = parseInt(e.target.value)||0; updateDOM(); }));
+
+            // Toggle Config Menu
+            const tglCfg = () => {
+                if(isDetached) return; // Do not hide if it's currently detached floating window
+                state.isConfigOpen = !state.isConfigOpen;
+                document.getElementById('config-panel').classList.toggle('translate-x-full', !state.isConfigOpen);
+                document.body.classList.toggle('mode-obs', !state.isConfigOpen);
+                document.body.classList.toggle('mode-preview', state.isConfigOpen);
+                
+                const btn = document.getElementById('btn-toggle-config');
+                btn.innerHTML = state.isConfigOpen ? `<i class="fas fa-eye-slash"></i> <span>Hide Controls (OBS Mode)</span>` : `<i class="fas fa-eye"></i> <span>Show Editor</span>`;
+                btn.className = state.isConfigOpen 
+                    ? "fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full shadow-lg font-bold text-sm transition-all duration-300 pointer-events-auto cursor-pointer border border-indigo-400 flex items-center gap-2"
+                    : "fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-full shadow-lg font-bold text-sm transition-all duration-300 pointer-events-auto cursor-pointer border border-gray-500 flex items-center gap-2";
+            };
+            document.getElementById('btn-toggle-config').addEventListener('click', tglCfg);
+            document.getElementById('btn-close-config').addEventListener('click', () => {
+                if(isDetached) {
+                    // re-attach and hide
+                    document.getElementById('btn-detach-config').click(); 
+                }
+                tglCfg();
+            });
+        }
+
+        // Init
+        refreshLayoutDropdown();
+        refreshTourneyDropdown();
+        buildEventsConfigUI();
+        setupListeners();
+        updateDOM();
+        
+    </script>
+</body>
+</html>
