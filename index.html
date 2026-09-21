@@ -547,14 +547,7 @@
         let state = JSON.parse(JSON.stringify(defaultState));
         let activeLayoutName = 'Default';
 
-        // Boot loader: Check for a synced state
-        const liveStateStr = localStorage.getItem('obs_overlay_sync_state');
-        if(liveStateStr) {
-            try { state = JSON.parse(liveStateStr); } catch(e){}
-        }
-
         function sanitizeState(s) {
-            s.visibility = s.visibility || defaultState.visibility;
             s.visibility.guests = s.visibility.guests ?? true;
             s.scales = s.scales ?? { logoChannel: 1, events: 1, medals: 1, topbar: 1, goals: 1, lowerthird: 1, ticker: 1, guests: 1 };
             s.guestsPos = s.guestsPos ?? { x: 384, y: 128 };
@@ -670,36 +663,59 @@
         });
         document.addEventListener('mouseup', () => { isDraggingGuest = false; });
 
-        // --- SYNC ENGINE (BroadcastChannel + LocalStorage) ---
+        // --- ROBUST SYNC ENGINE (BroadcastChannel + LocalStorage Polling) ---
         const bc = new BroadcastChannel('obs_overlay_sync');
-        
+        let lastSyncTime = localStorage.getItem('obs_overlay_sync_trigger') || "0";
+
         bc.onmessage = (e) => {
             if (e.data.type === 'SYNC_STATE') {
-                state = sanitizeState(JSON.parse(JSON.stringify(e.data.payload)));
-                if (isStreamSource) state.isConfigOpen = false; // Always force UI hidden in Restream/OBS
-                updateDOM(); if(!isStreamSource) populateConfigFromState();
+                processSyncedState(e.data.payload);
             }
         };
 
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'obs_overlay_sync_trigger' || e.key === 'obs_overlay_sync_state') {
+        function processSyncedState(newState) {
+            state = sanitizeState(JSON.parse(JSON.stringify(newState)));
+            if (isStreamSource) state.isConfigOpen = false;
+            updateDOM();
+            if(!isStreamSource) populateConfigFromState();
+        }
+
+        function checkStorageSync() {
+            const trigger = localStorage.getItem('obs_overlay_sync_trigger');
+            if (trigger && trigger !== lastSyncTime) {
+                lastSyncTime = trigger;
                 const live = localStorage.getItem('obs_overlay_sync_state');
-                if(live) {
-                    state = sanitizeState(JSON.parse(live));
-                    if (isStreamSource) state.isConfigOpen = false;
-                    updateDOM(); if (!isStreamSource) populateConfigFromState();
+                if (live) {
+                    try { processSyncedState(JSON.parse(live)); } catch(e) {}
                 }
             }
-        });
+        }
+
+        // Active polling for Restream strictly catching swallowed storage events
+        if (isStreamSource) {
+            setInterval(checkStorageSync, 500);
+            checkStorageSync(); // Initial load
+        } else {
+            // Standard tab communication
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'obs_overlay_sync_trigger' || e.key === 'obs_overlay_sync_state') checkStorageSync();
+            });
+        }
 
         function syncToStream() {
+            const triggerTime = Date.now().toString();
             localStorage.setItem('obs_overlay_sync_state', JSON.stringify(state));
-            localStorage.setItem('obs_overlay_sync_trigger', Date.now()); // force storage event across tabs
+            localStorage.setItem('obs_overlay_sync_trigger', triggerTime);
+            lastSyncTime = triggerTime; // Prevent self-triggering
             bc.postMessage({ type: 'SYNC_STATE', payload: state });
             
-            const btn = document.getElementById('btn-sync-stream'); const origHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-check"></i> Layout Synced!'; btn.classList.add('bg-emerald-600');
-            setTimeout(() => { btn.innerHTML = origHtml; btn.classList.remove('bg-emerald-600'); }, 2000);
+            const btn = document.getElementById('btn-sync-stream');
+            btn.innerHTML = '<i class="fas fa-check"></i> Layout Synced!';
+            btn.classList.add('bg-emerald-600');
+            setTimeout(() => { 
+                btn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Sync to Stream'; 
+                btn.classList.remove('bg-emerald-600'); 
+            }, 2000);
         }
 
         // --- CORE UI UPDATE ---
