@@ -178,9 +178,9 @@
                 </div>
             </div>
 
-            <!-- GUESTS FLOATING PANEL (Draggable, Percent-based like Source 8) -->
-            <div id="panel-guests" class="absolute flex flex-col gap-4 z-20 transition-opacity mode-edit pointer-events-auto" style="transform: translate(-50%, -50%) scale(var(--scale-guests)); left: 20%; top: 50%;">
-                <div id="ui-guests-list" class="flex flex-col gap-4 pointer-events-none">
+            <!-- GUESTS FLOATING PANEL (Draggable, Anti-Wrap logic applied) -->
+            <div id="panel-guests" class="absolute flex flex-col gap-4 z-20 transition-opacity mode-edit pointer-events-auto w-max whitespace-nowrap" style="transform: translate(-50%, -50%) scale(var(--scale-guests)); left: 20%; top: 50%;">
+                <div id="ui-guests-list" class="flex flex-col gap-4 pointer-events-none w-max">
                     <!-- Injected via JS -->
                 </div>
             </div>
@@ -572,6 +572,15 @@
             return s;
         }
 
+        // --- SAFE STORAGE HELPER ---
+        function safeGetStorage(key) { try { return localStorage.getItem(key); } catch(e) { return null; } }
+        
+        const liveStateStr = safeGetStorage('asian_games_sync_state');
+        if(liveStateStr) {
+            try { state = JSON.parse(liveStateStr); } catch(e){}
+        }
+        state = sanitizeState(state);
+
         // --- DOM BUILDERS ---
         function buildStaticDOM() {
             const scaleFields = [
@@ -707,7 +716,7 @@
         });
         document.addEventListener('mouseup', () => { isDraggingCfg = false; });
 
-        // --- DRAGGABLE GUEST PANEL LOGIC WITH AUTO-SYNC ---
+        // --- DRAGGABLE GUEST PANEL LOGIC WITH AUTO-SYNC (PERCENTAGE BASED) ---
         let isDraggingGuest = false;
         const guestPanel = document.getElementById('panel-guests');
         
@@ -810,15 +819,15 @@
                     <span class="font-medium leading-tight">${ev.name}</span>
                 </div>`).join('');
 
-            // Guests Render
+            // Guests Render (Anti-Wrap added)
             document.getElementById('ui-guests-list').innerHTML = state.guests.filter(g => g.show).map(g => `
-                <div class="flex flex-col shadow-2xl rounded-r-lg overflow-hidden border-l-4 pointer-events-none" style="border-left-color: var(--color-primary);">
+                <div class="flex flex-col shadow-2xl rounded-r-lg overflow-hidden border-l-4 pointer-events-none w-max" style="border-left-color: var(--color-primary);">
                     <div class="px-6 py-2" style="background: ${getBgStr(g.nameBgType, g.nameBg1, g.nameBg2)};">
-                        <div style="font-family: ${state.fonts.gnameFam}; font-size: ${state.fonts.gnameSize}rem; color: ${g.nameColor}; line-height: 1.1;" class="uppercase font-bold tracking-wide drop-shadow-md">${g.name}</div>
+                        <div style="font-family: ${state.fonts.gnameFam}; font-size: ${state.fonts.gnameSize}rem; color: ${g.nameColor}; line-height: 1.1; white-space: nowrap;" class="uppercase font-bold tracking-wide drop-shadow-md whitespace-nowrap">${g.name}</div>
                     </div>
                     ${g.desig ? `
                     <div class="px-6 py-1 border-t border-white/20" style="background: ${getBgStr(g.desigBgType, g.desigBg1, g.desigBg2)};">
-                        <div style="font-family: ${state.fonts.gdesigFam}; font-size: ${state.fonts.gdesigSize}rem; color:${g.desigColor}; line-height: 1.1;" class="uppercase font-semibold tracking-widest">${g.desig}</div>
+                        <div style="font-family: ${state.fonts.gdesigFam}; font-size: ${state.fonts.gdesigSize}rem; color:${g.desigColor}; line-height: 1.1; white-space: nowrap;" class="uppercase font-semibold tracking-widest whitespace-nowrap">${g.desig}</div>
                     </div>` : ''}
                 </div>
             `).join('');
