@@ -117,9 +117,18 @@
             border-radius: 8px;
             background: rgba(255, 255, 255, 0.05);
         }
+
+        #drag-hint {
+            position: absolute; left: 50%; top: 10%; transform: translateX(-50%);
+            background: rgba(234, 179, 8, 0.9); color: #000; padding: 10px 20px;
+            border-radius: 20px; font-size: 14px; font-weight: 900; display: none;
+            pointer-events: none; z-index: 10000; box-shadow: 0 5px 15px rgba(0,0,0,0.5); text-transform: uppercase;
+        }
     </style>
 </head>
 <body class="mode-preview text-white antialiased">
+
+    <div id="drag-hint">DRAGGING ELEMENT...</div>
 
     <!-- OVERLAY ROOT -->
     <div id="overlay-root" class="relative w-full h-full pointer-events-none z-10 flex flex-col justify-between p-6">
@@ -169,8 +178,8 @@
                 </div>
             </div>
 
-            <!-- GUESTS FLOATING PANEL (Draggable) -->
-            <div id="panel-guests" class="absolute flex flex-col gap-4 z-20 transition-opacity mode-edit pointer-events-auto" style="zoom: var(--scale-guests); left: 384px; top: 128px;">
+            <!-- GUESTS FLOATING PANEL (Draggable, Percent-based like Source 8) -->
+            <div id="panel-guests" class="absolute flex flex-col gap-4 z-20 transition-opacity mode-edit pointer-events-auto" style="transform: translate(-50%, -50%) scale(var(--scale-guests)); left: 20%; top: 50%;">
                 <div id="ui-guests-list" class="flex flex-col gap-4 pointer-events-none">
                     <!-- Injected via JS -->
                 </div>
@@ -528,7 +537,7 @@
                 gnameFam: "'Oswald', sans-serif", gnameSize: "1.5",
                 gdesigFam: "'Inter', sans-serif", gdesigSize: "0.8"
             },
-            guestsPos: { x: 384, y: 128 },
+            guestsPos: { x: 20, y: 50 },
             guests: [
                 { id: 1, name: "JOHN DOE", desig: "Expert Analyst", show: true, 
                   nameBgType: 'gradient', nameBg1: '#1e293b', nameBg2: '#0f172a', nameColor: '#ffffff', 
@@ -551,10 +560,10 @@
         let activeLayoutName = 'Default';
 
         function sanitizeState(s) {
-            s.visibility = s.visibility || defaultState.visibility;
             s.visibility.guests = s.visibility.guests ?? true;
             s.scales = s.scales ?? { logoChannel: 1, events: 1, medals: 1, topbar: 1, goals: 1, lowerthird: 1, ticker: 1, guests: 1 };
-            s.guestsPos = s.guestsPos ?? { x: 384, y: 128 };
+            s.guestsPos = s.guestsPos ?? { x: 20, y: 50 };
+            if (s.guestsPos && s.guestsPos.x > 100) { s.guestsPos = { x: 20, y: 50 }; } // Migrate old pixel values to percentage
             s.guests = s.guests ?? JSON.parse(JSON.stringify(defaultState.guests));
             s.fonts.gnameFam = s.fonts.gnameFam || "'Oswald', sans-serif";
             s.fonts.gnameSize = s.fonts.gnameSize || "1.5";
@@ -562,15 +571,6 @@
             s.fonts.gdesigSize = s.fonts.gdesigSize || "0.8";
             return s;
         }
-
-        // --- SAFE STORAGE HELPER ---
-        function safeGetStorage(key) { try { return localStorage.getItem(key); } catch(e) { return null; } }
-        
-        const liveStateStr = safeGetStorage('asian_games_sync_state');
-        if(liveStateStr) {
-            try { state = JSON.parse(liveStateStr); } catch(e){}
-        }
-        state = sanitizeState(state);
 
         // --- DOM BUILDERS ---
         function buildStaticDOM() {
@@ -664,6 +664,18 @@
             }, 2000);
         }
 
+        // Restore initialization
+        function initStorageState() {
+            try {
+                const liveStateStr = localStorage.getItem('asian_games_sync_state');
+                if(liveStateStr) {
+                    state = JSON.parse(liveStateStr);
+                }
+            } catch(e){}
+            state = sanitizeState(state);
+        }
+        initStorageState();
+
         // --- DRAGGABLE CONFIG PANEL LOGIC ---
         let isDetached = false, isDraggingCfg = false, dragStartX, dragStartY, panelStartX, panelStartY;
         const panel = document.getElementById('config-panel');
@@ -695,25 +707,38 @@
         });
         document.addEventListener('mouseup', () => { isDraggingCfg = false; });
 
-        // --- DRAGGABLE GUEST PANEL LOGIC ---
-        let isDraggingGuest = false, gDragStartX, gDragStartY, gPanelStartX, gPanelStartY;
+        // --- DRAGGABLE GUEST PANEL LOGIC WITH AUTO-SYNC ---
+        let isDraggingGuest = false;
         const guestPanel = document.getElementById('panel-guests');
         
         guestPanel.addEventListener('mousedown', e => {
             if(!state.isConfigOpen || isStreamSource) return;
-            isDraggingGuest = true; gDragStartX = e.clientX; gDragStartY = e.clientY;
-            gPanelStartX = state.guestsPos.x; gPanelStartY = state.guestsPos.y;
+            isDraggingGuest = true;
+            document.getElementById('drag-hint').style.display = 'block';
         });
         document.addEventListener('mousemove', e => {
             if(!isDraggingGuest) return;
             e.preventDefault();
-            const zoom = parseFloat(state.scales.guests) || 1;
-            state.guestsPos.x = gPanelStartX + (e.clientX - gDragStartX) / zoom;
-            state.guestsPos.y = gPanelStartY + (e.clientY - gDragStartY) / zoom;
-            guestPanel.style.left = state.guestsPos.x + 'px';
-            guestPanel.style.top = state.guestsPos.y + 'px';
+            const px = (e.clientX / window.innerWidth) * 100;
+            const py = (e.clientY / window.innerHeight) * 100;
+            state.guestsPos.x = px;
+            state.guestsPos.y = py;
+            guestPanel.style.left = px + '%';
+            guestPanel.style.top = py + '%';
         });
-        document.addEventListener('mouseup', () => { isDraggingGuest = false; });
+        document.addEventListener('mouseup', () => { 
+            if(isDraggingGuest) {
+                isDraggingGuest = false;
+                document.getElementById('drag-hint').style.display = 'none';
+                
+                // Publish update over PubNub implicitly without showing the "Layout Synced" button animation
+                pubnub.publish({
+                    channel: 'asian_games_live_stream_channel',
+                    message: { type: 'SYNC_STATE', payload: state }
+                });
+                try { localStorage.setItem('asian_games_sync_state', JSON.stringify(state)); } catch(e){}
+            }
+        });
 
         // --- CORE UI UPDATE ---
         const hexToRgba = (hex, alpha) => { const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16); return `rgba(${r}, ${g}, ${b}, ${alpha})`; };
@@ -731,9 +756,10 @@
             document.getElementById('ui-tourney-logo-wrap').style.display = state.visibility.logoTopRight ? 'flex' : 'none';
             document.getElementById('ui-lt-logo').style.display = state.visibility.logoLowerThird ? 'block' : 'none';
 
-            // Guest Panel Setup
-            guestPanel.style.left = state.guestsPos.x + 'px';
-            guestPanel.style.top = state.guestsPos.y + 'px';
+            // Guest Panel Setup (Percent Math)
+            guestPanel.style.left = state.guestsPos.x + '%';
+            guestPanel.style.top = state.guestsPos.y + '%';
+            guestPanel.style.transform = `translate(-50%, -50%) scale(var(--scale-guests))`;
             guestPanel.classList.toggle('mode-edit', state.isConfigOpen && !isStreamSource);
 
             // Backgrounds & Theme colors
