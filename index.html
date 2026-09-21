@@ -292,7 +292,7 @@
 
         <div class="p-5 overflow-y-auto flex-grow flex flex-col gap-6 pb-20">
             
-            <!-- Layout Manager -->
+            <!-- Layout Manager (Save/Load) -->
             <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                 <h3 class="font-semibold text-emerald-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-save"></i> Layout Manager</h3>
                 <div class="flex gap-2 mb-2">
@@ -505,6 +505,9 @@
         const THE_FONT_LIST = ["Montserrat", "Teko", "Roboto", "Bebas Neue", "Oswald", "Anton", "Poppins", "Lato", "Open Sans", "Raleway", "Ubuntu", "PT Sans", "Merriweather", "Playfair Display", "Rubik", "Work Sans", "Nunito", "Fira Sans", "Inter"];
         const getFontOptions = (selected) => THE_FONT_LIST.map(font => `<option value="'${font}', sans-serif" ${selected.includes(font) ? 'selected' : ''}>${font}</option>`).join('');
 
+        // --- OBS DETECTION ---
+        const isStreamSource = typeof window.obsstudio !== 'undefined' || window.location.search.includes('obs=1') || window.location.search.includes('display_overlay=true');
+
         // --- DEFAULT STATE & INITIALIZATION ---
         const defaultState = {
             visibility: { events: true, medals: true, topbar: true, goals: true, lowerthird: true, ticker: true, logoChannel: true, logoTopRight: true, logoLowerThird: true, guests: true },
@@ -559,7 +562,6 @@
 
         // --- DOM BUILDERS ---
         function buildStaticDOM() {
-            // Build Scaling Panel
             const scaleFields = [
                 { id: 'logoChannel', label: 'Channel Logo' }, { id: 'events', label: 'Upcoming Events' },
                 { id: 'medals', label: 'Medal Tally' }, { id: 'topbar', label: 'Top Bar Branding' },
@@ -574,7 +576,6 @@
                 </div>
             `).join('');
 
-            // Build Typography Panel
             const fontFields = [
                 { id: 'main', label: 'Main Title', defFam: "'Oswald', sans-serif", defSize: 2.25, defColor: '#ffffff', hc: true },
                 { id: 'sub', label: 'Sub Title', defFam: "'Inter', sans-serif", defSize: 1.125, defColor: '#FF9933', hc: true },
@@ -602,12 +603,22 @@
             `).join('');
         }
 
+        // --- FORCE STREAM SOURCE UI ---
+        if(isStreamSource) {
+            document.getElementById('btn-toggle-config').style.display = 'none';
+            document.getElementById('config-panel').style.display = 'none';
+            state.isConfigOpen = false;
+            document.body.classList.add('mode-obs');
+            document.body.classList.remove('mode-preview');
+        }
+
         // --- DRAGGABLE CONFIG PANEL LOGIC ---
         let isDetached = false, isDraggingCfg = false, dragStartX, dragStartY, panelStartX, panelStartY;
         const panel = document.getElementById('config-panel');
         const header = document.getElementById('config-header');
 
         document.getElementById('btn-detach-config').addEventListener('click', () => {
+            if(isStreamSource) return;
             isDetached = !isDetached;
             if(isDetached) {
                 panel.classList.remove('h-full', 'right-0', 'top-0', 'fixed', 'translate-x-0', 'translate-x-full');
@@ -623,7 +634,7 @@
         });
 
         header.addEventListener('mousedown', e => {
-            if(!isDetached || e.target.closest('button')) return;
+            if(!isDetached || isStreamSource || e.target.closest('button')) return;
             isDraggingCfg = true; dragStartX = e.clientX; dragStartY = e.clientY;
             const rect = panel.getBoundingClientRect(); panelStartX = rect.left; panelStartY = rect.top;
         });
@@ -637,7 +648,7 @@
         const guestPanel = document.getElementById('panel-guests');
         
         guestPanel.addEventListener('mousedown', e => {
-            if(!state.isConfigOpen) return;
+            if(!state.isConfigOpen || isStreamSource) return;
             isDraggingGuest = true; gDragStartX = e.clientX; gDragStartY = e.clientY;
             gPanelStartX = state.guestsPos.x; gPanelStartY = state.guestsPos.y;
         });
@@ -657,6 +668,7 @@
         bc.onmessage = (e) => {
             if (e.data.type === 'SYNC_STATE') {
                 state = sanitizeState(JSON.parse(JSON.stringify(e.data.payload)));
+                if (isStreamSource) state.isConfigOpen = false; // Always force UI hidden in Restream/OBS
                 updateDOM(); populateConfigFromState();
             }
         };
@@ -686,7 +698,7 @@
             // Guest Panel Setup
             guestPanel.style.left = state.guestsPos.x + 'px';
             guestPanel.style.top = state.guestsPos.y + 'px';
-            guestPanel.classList.toggle('mode-edit', state.isConfigOpen);
+            guestPanel.classList.toggle('mode-edit', state.isConfigOpen && !isStreamSource);
 
             // Backgrounds & Theme colors
             root.style.setProperty('--color-primary', state.colors.primary);
@@ -908,7 +920,7 @@
             ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`in-${m}`).addEventListener('input', e => { state.medals[m] = parseInt(e.target.value)||0; updateDOM(); }));
 
             const tglCfg = () => {
-                if(isDetached) return;
+                if(isDetached || isStreamSource) return;
                 state.isConfigOpen = !state.isConfigOpen;
                 document.getElementById('config-panel').classList.toggle('translate-x-full', !state.isConfigOpen);
                 document.body.classList.toggle('mode-obs', !state.isConfigOpen); document.body.classList.toggle('mode-preview', state.isConfigOpen);
