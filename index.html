@@ -547,7 +547,18 @@
         let state = JSON.parse(JSON.stringify(defaultState));
         let activeLayoutName = 'Default';
 
+        // --- SAFE STORAGE HELPERS ---
+        function safeGetStorage(key) { try { return localStorage.getItem(key); } catch(e) { return null; } }
+        function safeSetStorage(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+
+        // Boot loader: Check for a synced state
+        const liveStateStr = safeGetStorage('obs_overlay_sync_state');
+        if(liveStateStr) {
+            try { state = JSON.parse(liveStateStr); } catch(e){}
+        }
+
         function sanitizeState(s) {
+            s.visibility = s.visibility || defaultState.visibility;
             s.visibility.guests = s.visibility.guests ?? true;
             s.scales = s.scales ?? { logoChannel: 1, events: 1, medals: 1, topbar: 1, goals: 1, lowerthird: 1, ticker: 1, guests: 1 };
             s.guestsPos = s.guestsPos ?? { x: 384, y: 128 };
@@ -663,15 +674,21 @@
         });
         document.addEventListener('mouseup', () => { isDraggingGuest = false; });
 
-        // --- ROBUST SYNC ENGINE (BroadcastChannel + LocalStorage Polling) ---
-        const bc = new BroadcastChannel('obs_overlay_sync');
-        let lastSyncTime = localStorage.getItem('obs_overlay_sync_trigger') || "0";
+        // --- ROBUST SYNC ENGINE (Safe BroadcastChannel + Polling) ---
+        let bc = null;
+        try {
+            bc = new BroadcastChannel('obs_overlay_sync');
+            bc.onmessage = (e) => {
+                if (e.data && e.data.type === 'SYNC_STATE') {
+                    processSyncedState(e.data.payload);
+                }
+            };
+        } catch (err) {
+            console.warn("BroadcastChannel not supported or blocked in this context.");
+        }
 
-        bc.onmessage = (e) => {
-            if (e.data.type === 'SYNC_STATE') {
-                processSyncedState(e.data.payload);
-            }
-        };
+        let lastSyncTime = "0";
+        try { lastSyncTime = localStorage.getItem('obs_overlay_sync_trigger') || "0"; } catch(e) {}
 
         function processSyncedState(newState) {
             state = sanitizeState(JSON.parse(JSON.stringify(newState)));
@@ -681,39 +698,50 @@
         }
 
         function checkStorageSync() {
-            const trigger = localStorage.getItem('obs_overlay_sync_trigger');
-            if (trigger && trigger !== lastSyncTime) {
-                lastSyncTime = trigger;
-                const live = localStorage.getItem('obs_overlay_sync_state');
-                if (live) {
-                    try { processSyncedState(JSON.parse(live)); } catch(e) {}
+            try {
+                const trigger = localStorage.getItem('obs_overlay_sync_trigger');
+                if (trigger && trigger !== lastSyncTime) {
+                    lastSyncTime = trigger;
+                    const live = localStorage.getItem('obs_overlay_sync_state');
+                    if (live) {
+                        processSyncedState(JSON.parse(live));
+                    }
                 }
-            }
+            } catch (err) {}
         }
 
-        // Active polling for Restream strictly catching swallowed storage events
+        // Active polling ensures Restream catches it even if events are swallowed
         if (isStreamSource) {
             setInterval(checkStorageSync, 500);
-            checkStorageSync(); // Initial load
+            checkStorageSync();
         } else {
-            // Standard tab communication
             window.addEventListener('storage', (e) => {
                 if (e.key === 'obs_overlay_sync_trigger' || e.key === 'obs_overlay_sync_state') checkStorageSync();
             });
+            // Also poll as a fallback in the editor
+            setInterval(checkStorageSync, 2000);
         }
 
         function syncToStream() {
             const triggerTime = Date.now().toString();
-            localStorage.setItem('obs_overlay_sync_state', JSON.stringify(state));
-            localStorage.setItem('obs_overlay_sync_trigger', triggerTime);
-            lastSyncTime = triggerTime; // Prevent self-triggering
-            bc.postMessage({ type: 'SYNC_STATE', payload: state });
+            try {
+                localStorage.setItem('obs_overlay_sync_state', JSON.stringify(state));
+                localStorage.setItem('obs_overlay_sync_trigger', triggerTime);
+                lastSyncTime = triggerTime; // Prevent self-triggering
+            } catch (err) {
+                console.warn("LocalStorage blocked. Sync may fail.");
+            }
+            
+            if (bc) {
+                try { bc.postMessage({ type: 'SYNC_STATE', payload: state }); } catch(e) {}
+            }
             
             const btn = document.getElementById('btn-sync-stream');
+            const origHtml = '<i class="fas fa-broadcast-tower"></i> Sync to Stream'; 
             btn.innerHTML = '<i class="fas fa-check"></i> Layout Synced!';
             btn.classList.add('bg-emerald-600');
             setTimeout(() => { 
-                btn.innerHTML = '<i class="fas fa-broadcast-tower"></i> Sync to Stream'; 
+                btn.innerHTML = origHtml; 
                 btn.classList.remove('bg-emerald-600'); 
             }, 2000);
         }
@@ -802,7 +830,18 @@
         }
 
         // --- LAYOUT & TOURNAMENT MANAGEMENT ---
-        function getStorage(key, def) { let d = JSON.parse(localStorage.getItem(key) || '{}'); if(Object.keys(d).length===0 && def) d['Default'] = def; return d; }
+        function getStorage(key, def) { 
+            try {
+                let d = JSON.parse(localStorage.getItem(key) || '{}'); 
+                if(Object.keys(d).length===0 && def) d['Default'] = def; 
+                return d; 
+            } catch(e) {
+                let d = {};
+                if(def) d['Default'] = def;
+                return d;
+            }
+        }
+        
         const getLayouts = () => getStorage('stream_layouts', defaultState);
         const getTourneyPresets = () => getStorage('stream_tourney_presets');
         const getGuestPresets = () => getStorage('stream_guest_presets');
@@ -916,17 +955,17 @@
         // --- LISTENERS ---
         function setupListeners() {
             document.getElementById('btn-load-layout').addEventListener('click', () => { activeLayoutName = document.getElementById('sel-layout').value; state = sanitizeState(JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]))); updateDOM(); populateConfigFromState(); });
-            document.getElementById('btn-save-layout').addEventListener('click', () => { if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { let layouts = getLayouts(); layouts[activeLayoutName] = state; localStorage.setItem('stream_layouts', JSON.stringify(layouts)); alert('Layout saved successfully.'); } });
-            document.getElementById('btn-saveas-layout').addEventListener('click', () => { let name = prompt("Enter new layout name:"); if(name && name.trim() !== '') { activeLayoutName = name.trim(); let layouts = getLayouts(); layouts[activeLayoutName] = state; localStorage.setItem('stream_layouts', JSON.stringify(layouts)); refreshDropdown('sel-layout', getLayouts(), activeLayoutName); } });
+            document.getElementById('btn-save-layout').addEventListener('click', () => { if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { let layouts = getLayouts(); layouts[activeLayoutName] = state; safeSetStorage('stream_layouts', JSON.stringify(layouts)); alert('Layout saved successfully.'); } });
+            document.getElementById('btn-saveas-layout').addEventListener('click', () => { let name = prompt("Enter new layout name:"); if(name && name.trim() !== '') { activeLayoutName = name.trim(); let layouts = getLayouts(); layouts[activeLayoutName] = state; safeSetStorage('stream_layouts', JSON.stringify(layouts)); refreshDropdown('sel-layout', getLayouts(), activeLayoutName); } });
             document.getElementById('btn-export-json').addEventListener('click', () => { const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state)); a.download = `overlay_layout_${activeLayoutName.replace(/\s+/g, '_')}.json`; a.click(); });
             document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('in-file-import').click());
             document.getElementById('in-file-import').addEventListener('change', (e) => { if(e.target.files.length > 0) { const r = new FileReader(); r.onload = ev => { try { state = sanitizeState(JSON.parse(ev.target.result)); updateDOM(); populateConfigFromState(); alert("Imported!"); } catch(err) { alert("Error"); } }; r.readAsText(e.target.files[0]); } });
             document.getElementById('btn-sync-stream').addEventListener('click', syncToStream);
 
-            document.getElementById('btn-save-tourney').addEventListener('click', () => { let name = prompt("Enter a name for this tournament preset:"); if(name && name.trim() !== '') { let p = getTourneyPresets(); p[name.trim()] = { line1: state.branding.line1, line2: state.branding.line2, logoUrl: state.branding.logoUrl }; localStorage.setItem('stream_tourney_presets', JSON.stringify(p)); refreshDropdown('sel-tourney-preset', getTourneyPresets()); alert("Tournament saved."); } });
+            document.getElementById('btn-save-tourney').addEventListener('click', () => { let name = prompt("Enter a name for this tournament preset:"); if(name && name.trim() !== '') { let p = getTourneyPresets(); p[name.trim()] = { line1: state.branding.line1, line2: state.branding.line2, logoUrl: state.branding.logoUrl }; safeSetStorage('stream_tourney_presets', JSON.stringify(p)); refreshDropdown('sel-tourney-preset', getTourneyPresets()); alert("Tournament saved."); } });
             document.getElementById('btn-load-tourney').addEventListener('click', () => { const sel = document.getElementById('sel-tourney-preset').value; const p = getTourneyPresets(); if(p[sel]) { state.branding.line1 = p[sel].line1; state.branding.line2 = p[sel].line2; state.branding.logoUrl = p[sel].logoUrl; updateDOM(); populateConfigFromState(); } });
 
-            document.getElementById('btn-save-guest-preset').addEventListener('click', () => { let name = prompt("Enter a name for this Guest Roster preset:"); if(name && name.trim() !== '') { let p = getGuestPresets(); p[name.trim()] = state.guests; localStorage.setItem('stream_guest_presets', JSON.stringify(p)); refreshDropdown('sel-guest-preset', getGuestPresets()); alert("Roster saved."); } });
+            document.getElementById('btn-save-guest-preset').addEventListener('click', () => { let name = prompt("Enter a name for this Guest Roster preset:"); if(name && name.trim() !== '') { let p = getGuestPresets(); p[name.trim()] = state.guests; safeSetStorage('stream_guest_presets', JSON.stringify(p)); refreshDropdown('sel-guest-preset', getGuestPresets()); alert("Roster saved."); } });
             document.getElementById('btn-load-guest-preset').addEventListener('click', () => { const sel = document.getElementById('sel-guest-preset').value; const p = getGuestPresets(); if(p[sel]) { state.guests = JSON.parse(JSON.stringify(p[sel])); updateDOM(); populateConfigFromState(); } });
 
             document.getElementById('btn-add-event').addEventListener('click', () => { state.events.push({ time: "00:00", name: "New Event" }); buildEventsConfigUI(); updateDOM(); });
