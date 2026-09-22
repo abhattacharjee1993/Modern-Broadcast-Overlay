@@ -600,7 +600,9 @@
         };
 
         let state = JSON.parse(JSON.stringify(defaultState));
-        let activeLayoutName = 'Default';
+        
+        // Track active layout name in local storage at the root level so it survives page reloads BEFORE initialization
+        let activeLayoutName = localStorage.getItem('stream_active_layout_name') || 'Default';
 
         function sanitizeState(s) {
             s.visibility.guests = s.visibility.guests ?? true;
@@ -878,7 +880,7 @@
             const safeSetImg = (id, url) => {
                 const el = document.getElementById(id);
                 if (el) {
-                    el.src = url || '';
+                    if (url) el.src = url;
                     el.style.display = url ? 'block' : 'none';
                 }
             };
@@ -1046,26 +1048,53 @@
 
         // --- LISTENERS ---
         function setupListeners() {
-            // Track active layout name in local storage so it survives page reloads
-            activeLayoutName = localStorage.getItem('stream_active_layout_name') || 'Default';
-
-            document.getElementById('btn-load-layout').addEventListener('click', () => { saveHistory(); activeLayoutName = document.getElementById('sel-layout').value; localStorage.setItem('stream_active_layout_name', activeLayoutName); state = sanitizeState(JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]))); updateDOM(); populateConfigFromState(); });
             
-            document.getElementById('btn-save-layout').addEventListener('click', () => { if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); localStorage.setItem('stream_active_layout_name', activeLayoutName); alert('Layout saved successfully.'); }catch(e){} } });
+            document.getElementById('btn-load-layout').addEventListener('click', () => { 
+                saveHistory(); 
+                activeLayoutName = document.getElementById('sel-layout').value; 
+                localStorage.setItem('stream_active_layout_name', activeLayoutName); 
+                state = sanitizeState(JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]))); 
+                updateDOM(); 
+                populateConfigFromState(); 
+            });
             
-            document.getElementById('btn-saveas-layout').addEventListener('click', () => { let name = prompt("Enter new layout name:"); if(name && name.trim() !== '') { activeLayoutName = name.trim(); let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); localStorage.setItem('stream_active_layout_name', activeLayoutName); refreshDropdown('sel-layout', getLayouts(), activeLayoutName); }catch(e){} } });
+            document.getElementById('btn-save-layout').addEventListener('click', () => { 
+                if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { 
+                    let layouts = getLayouts(); 
+                    layouts[activeLayoutName] = state; 
+                    try { 
+                        localStorage.setItem('stream_layouts', JSON.stringify(layouts)); 
+                        localStorage.setItem('stream_active_layout_name', activeLayoutName); 
+                        alert('Layout saved successfully.'); 
+                    } catch(e){} 
+                } 
+            });
             
-            // Upgraded Export: Downloads the ENTIRE layout library instead of just the active visuals
+            document.getElementById('btn-saveas-layout').addEventListener('click', () => { 
+                let name = prompt("Enter new layout name:"); 
+                if(name && name.trim() !== '') { 
+                    activeLayoutName = name.trim(); 
+                    let layouts = getLayouts(); 
+                    layouts[activeLayoutName] = state; 
+                    try { 
+                        localStorage.setItem('stream_layouts', JSON.stringify(layouts)); 
+                        localStorage.setItem('stream_active_layout_name', activeLayoutName); 
+                        refreshDropdown('sel-layout', getLayouts(), activeLayoutName); 
+                    } catch(e){} 
+                } 
+            });
+            
+            // Upgraded Export: Downloads the ENTIRE layout library
             document.getElementById('btn-export-json').addEventListener('click', () => { 
                 let layouts = getLayouts(); 
-                layouts[activeLayoutName] = state; // Ensure current unsaved changes are included
+                layouts[activeLayoutName] = state; 
                 const a = document.createElement('a'); 
                 a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(layouts)); 
                 a.download = `stream_layouts_backup.json`; 
                 a.click(); 
             });
             
-            // Upgraded Import: Restores the entire layout library and updates the dropdown
+            // Upgraded Import: Restores the entire layout library
             document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('in-file-import').click());
             document.getElementById('in-file-import').addEventListener('change', (e) => { 
                 if(e.target.files.length > 0) { 
@@ -1073,11 +1102,20 @@
                     r.onload = ev => { 
                         try { 
                             const importedData = JSON.parse(ev.target.result); 
-                            if(importedData['Default']) { // Checks if it's a full layout library backup
+                            if(importedData['Default']) { 
                                 localStorage.setItem('stream_layouts', JSON.stringify(importedData));
+                                if(importedData[activeLayoutName]) {
+                                    state = sanitizeState(JSON.parse(JSON.stringify(importedData[activeLayoutName])));
+                                } else {
+                                    activeLayoutName = 'Default';
+                                    state = sanitizeState(JSON.parse(JSON.stringify(importedData['Default'])));
+                                }
+                                localStorage.setItem('stream_active_layout_name', activeLayoutName);
+                                updateDOM();
+                                populateConfigFromState();
                                 refreshDropdown('sel-layout', importedData, activeLayoutName);
                                 alert("Layout Library Imported Successfully!");
-                            } else { // Fallback for old single-state exports
+                            } else { 
                                 saveHistory(); state = sanitizeState(importedData); updateDOM(); populateConfigFromState(); alert("Imported into current layout!"); 
                             }
                         } catch(err) { alert("Error importing JSON."); } 
