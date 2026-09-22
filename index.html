@@ -440,16 +440,28 @@
             <!-- Branding Logos Uploads -->
             <div class="space-y-3 bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                 <h3 class="font-semibold text-indigo-400 uppercase tracking-wider text-xs flex items-center gap-2"><i class="fas fa-image"></i> Branding Logos</h3>
+                
                 <div>
-                    <label class="block text-gray-400 mb-1 text-xs">Top Left Channel Logo</label>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-gray-400 text-xs">Top Left Channel Logo</label>
+                        <button id="btn-rm-channel-logo" class="text-red-500 hover:text-red-400 text-[10px] transition-colors"><i class="fas fa-trash"></i> Remove</button>
+                    </div>
                     <input type="file" id="in-channel-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer">
                 </div>
+                
                 <div>
-                    <label class="block text-gray-400 mb-1 text-xs">Top Right Tournament Logo</label>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-gray-400 text-xs">Top Right Tournament Logo</label>
+                        <button id="btn-rm-tourney-logo" class="text-red-500 hover:text-red-400 text-[10px] transition-colors"><i class="fas fa-trash"></i> Remove</button>
+                    </div>
                     <input type="file" id="in-tourney-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer">
                 </div>
+                
                 <div>
-                    <label class="block text-gray-400 mb-1 text-xs">Lower Third Main Logo</label>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-gray-400 text-xs">Lower Third Main Logo</label>
+                        <button id="btn-rm-lt-logo" class="text-red-500 hover:text-red-400 text-[10px] transition-colors"><i class="fas fa-trash"></i> Remove</button>
+                    </div>
                     <input type="file" id="in-lt-logo" accept="image/*" class="w-full text-[10px] text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer">
                 </div>
             </div>
@@ -862,9 +874,18 @@
             document.getElementById('ui-events-header').textContent = state.eventsHeader;
             document.getElementById('ui-tourney-name-1').textContent = state.branding.line1;
             document.getElementById('ui-tourney-name-2').textContent = state.branding.line2;
-            document.getElementById('ui-tourney-logo').src = state.branding.logoUrl;
-            document.getElementById('ui-channel-logo').src = state.branding.channelLogoUrl;
-            document.getElementById('ui-lt-logo').src = state.lowerThird.logoUrl;
+
+            const safeSetImg = (id, url) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.src = url || '';
+                    el.style.display = url ? 'block' : 'none';
+                }
+            };
+            safeSetImg('ui-tourney-logo', state.branding.logoUrl);
+            safeSetImg('ui-channel-logo', state.branding.channelLogoUrl);
+            safeSetImg('ui-lt-logo', state.lowerThird.logoUrl);
+
             document.getElementById('ui-main-title').textContent = state.lowerThird.mainTitle;
             document.getElementById('ui-sub-title').textContent = state.lowerThird.subTitle;
             document.getElementById('ui-ticker-label').textContent = state.lowerThird.tickerLabel;
@@ -1025,12 +1046,46 @@
 
         // --- LISTENERS ---
         function setupListeners() {
-            document.getElementById('btn-load-layout').addEventListener('click', () => { saveHistory(); activeLayoutName = document.getElementById('sel-layout').value; state = sanitizeState(JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]))); updateDOM(); populateConfigFromState(); });
-            document.getElementById('btn-save-layout').addEventListener('click', () => { if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); alert('Layout saved successfully.'); }catch(e){} } });
-            document.getElementById('btn-saveas-layout').addEventListener('click', () => { let name = prompt("Enter new layout name:"); if(name && name.trim() !== '') { activeLayoutName = name.trim(); let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); refreshDropdown('sel-layout', getLayouts(), activeLayoutName); }catch(e){} } });
-            document.getElementById('btn-export-json').addEventListener('click', () => { const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state)); a.download = `overlay_layout_${activeLayoutName.replace(/\s+/g, '_')}.json`; a.click(); });
+            // Track active layout name in local storage so it survives page reloads
+            activeLayoutName = localStorage.getItem('stream_active_layout_name') || 'Default';
+
+            document.getElementById('btn-load-layout').addEventListener('click', () => { saveHistory(); activeLayoutName = document.getElementById('sel-layout').value; localStorage.setItem('stream_active_layout_name', activeLayoutName); state = sanitizeState(JSON.parse(JSON.stringify(getLayouts()[activeLayoutName]))); updateDOM(); populateConfigFromState(); });
+            
+            document.getElementById('btn-save-layout').addEventListener('click', () => { if(confirm(`Warning: This will overwrite the layout "${activeLayoutName}". Continue?`)) { let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); localStorage.setItem('stream_active_layout_name', activeLayoutName); alert('Layout saved successfully.'); }catch(e){} } });
+            
+            document.getElementById('btn-saveas-layout').addEventListener('click', () => { let name = prompt("Enter new layout name:"); if(name && name.trim() !== '') { activeLayoutName = name.trim(); let layouts = getLayouts(); layouts[activeLayoutName] = state; try{ localStorage.setItem('stream_layouts', JSON.stringify(layouts)); localStorage.setItem('stream_active_layout_name', activeLayoutName); refreshDropdown('sel-layout', getLayouts(), activeLayoutName); }catch(e){} } });
+            
+            // Upgraded Export: Downloads the ENTIRE layout library instead of just the active visuals
+            document.getElementById('btn-export-json').addEventListener('click', () => { 
+                let layouts = getLayouts(); 
+                layouts[activeLayoutName] = state; // Ensure current unsaved changes are included
+                const a = document.createElement('a'); 
+                a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(layouts)); 
+                a.download = `stream_layouts_backup.json`; 
+                a.click(); 
+            });
+            
+            // Upgraded Import: Restores the entire layout library and updates the dropdown
             document.getElementById('btn-import-json').addEventListener('click', () => document.getElementById('in-file-import').click());
-            document.getElementById('in-file-import').addEventListener('change', (e) => { if(e.target.files.length > 0) { const r = new FileReader(); r.onload = ev => { try { saveHistory(); state = sanitizeState(JSON.parse(ev.target.result)); updateDOM(); populateConfigFromState(); alert("Imported!"); } catch(err) { alert("Error"); } }; r.readAsText(e.target.files[0]); } });
+            document.getElementById('in-file-import').addEventListener('change', (e) => { 
+                if(e.target.files.length > 0) { 
+                    const r = new FileReader(); 
+                    r.onload = ev => { 
+                        try { 
+                            const importedData = JSON.parse(ev.target.result); 
+                            if(importedData['Default']) { // Checks if it's a full layout library backup
+                                localStorage.setItem('stream_layouts', JSON.stringify(importedData));
+                                refreshDropdown('sel-layout', importedData, activeLayoutName);
+                                alert("Layout Library Imported Successfully!");
+                            } else { // Fallback for old single-state exports
+                                saveHistory(); state = sanitizeState(importedData); updateDOM(); populateConfigFromState(); alert("Imported into current layout!"); 
+                            }
+                        } catch(err) { alert("Error importing JSON."); } 
+                    }; 
+                    r.readAsText(e.target.files[0]); 
+                } 
+            });
+
             document.getElementById('btn-sync-stream').addEventListener('click', syncToStream);
 
             document.getElementById('btn-save-tourney').addEventListener('click', () => { let name = prompt("Enter a name for this tournament preset:"); if(name && name.trim() !== '') { let p = getTourneyPresets(); p[name.trim()] = { line1: state.branding.line1, line2: state.branding.line2, logoUrl: state.branding.logoUrl }; try{ localStorage.setItem('stream_tourney_presets', JSON.stringify(p)); refreshDropdown('sel-tourney-preset', getTourneyPresets()); alert("Tournament saved."); }catch(e){} } });
@@ -1062,8 +1117,51 @@
             setVal('in-tourney-1', 'branding', 'line1'); setVal('in-tourney-2', 'branding', 'line2'); setVal('in-main-title', 'lowerThird', 'mainTitle'); setVal('in-sub-title', 'lowerThird', 'subTitle'); setVal('in-ticker-label', 'lowerThird', 'tickerLabel'); setVal('in-ticker', 'lowerThird', 'tickerText');
             document.getElementById('in-events-header').addEventListener('input', e => { state.eventsHeader = e.target.value; updateDOM(); });
 
-            const handleImg = (id, obj, key) => { if(document.getElementById(id)) document.getElementById(id).addEventListener('change', e => { if (e.target.files[0]) { const r = new FileReader(); r.onload = ev => { saveHistory(); state[obj][key] = ev.target.result; updateDOM(); }; r.readAsDataURL(e.target.files[0]); } }); };
-            handleImg('in-channel-logo', 'branding', 'channelLogoUrl'); handleImg('in-tourney-logo', 'branding', 'logoUrl'); handleImg('in-lt-logo', 'lowerThird', 'logoUrl');
+            const handleImg = (id, obj, key) => { 
+                if(document.getElementById(id)) {
+                    document.getElementById(id).addEventListener('change', e => { 
+                        if (e.target.files[0]) { 
+                            const r = new FileReader(); 
+                            r.onload = ev => { 
+                                const img = new Image();
+                                img.onload = () => {
+                                    const canvas = document.createElement('canvas');
+                                    const ctx = canvas.getContext('2d');
+                                    const MAX_SIZE = 200; // Compress uploads safely for PubNub limits
+                                    let width = img.width; let height = img.height;
+                                    if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } } 
+                                    else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+                                    canvas.width = width; canvas.height = height; 
+                                    ctx.drawImage(img, 0, 0, width, height);
+                                    saveHistory(); 
+                                    state[obj][key] = canvas.toDataURL('image/webp', 0.8); 
+                                    updateDOM(); 
+                                };
+                                img.src = ev.target.result;
+                            }; 
+                            r.readAsDataURL(e.target.files[0]); 
+                        } 
+                    }); 
+                }
+            };
+            handleImg('in-channel-logo', 'branding', 'channelLogoUrl'); 
+            handleImg('in-tourney-logo', 'branding', 'logoUrl'); 
+            handleImg('in-lt-logo', 'lowerThird', 'logoUrl');
+
+            // Wire up the new Logo Removal Buttons
+            const handleRemoveImg = (btnId, inputId, obj, key) => {
+                if(document.getElementById(btnId)) {
+                    document.getElementById(btnId).addEventListener('click', () => {
+                        saveHistory();
+                        state[obj][key] = "";
+                        document.getElementById(inputId).value = "";
+                        updateDOM();
+                    });
+                }
+            };
+            handleRemoveImg('btn-rm-channel-logo', 'in-channel-logo', 'branding', 'channelLogoUrl');
+            handleRemoveImg('btn-rm-tourney-logo', 'in-tourney-logo', 'branding', 'logoUrl');
+            handleRemoveImg('btn-rm-lt-logo', 'in-lt-logo', 'lowerThird', 'logoUrl');
 
             ['likeCurr', 'likeTarg', 'subCurr', 'subTarg'].forEach(k => { const id = k.replace(/([A-Z])/g, "-$1").toLowerCase(); if(document.getElementById(`in-${id}`)) document.getElementById(`in-${id}`).addEventListener('input', e => { state.goals[k] = parseInt(e.target.value)||0; updateDOM(); }); });
             ['gold', 'silver', 'bronze'].forEach(m => document.getElementById(`in-${m}`).addEventListener('input', e => { state.medals[m] = parseInt(e.target.value)||0; updateDOM(); }));
